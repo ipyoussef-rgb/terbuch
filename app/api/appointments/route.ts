@@ -117,8 +117,12 @@ async function initChat(appointmentId: string): Promise<void> {
     return;
   }
 
+  // Mercury addresses recipients by username/email (the user's KOBIL identity)
+  // — not by the OIDC `sub` UUID. Use the email captured at booking time.
+  const recipient = a.email;
+
   console.log(
-    `[chat init] target sub=${a.kobilSub} office=${a.slot.office.name} startsAt=${a.slot.startsAt.toISOString()}`,
+    `[chat init] recipient=${recipient} sub=${a.kobilSub} office=${a.slot.office.name} startsAt=${a.slot.startsAt.toISOString()}`,
   );
 
   const summary = {
@@ -131,7 +135,7 @@ async function initChat(appointmentId: string): Promise<void> {
   };
 
   console.log(`[chat init] step 1/2: sendPlainText`);
-  await sendPlainText(a.kobilSub, greetingText(summary));
+  await sendPlainText(recipient, greetingText(summary));
   await db.chatMessage.create({
     data: {
       appointmentId: a.id,
@@ -142,7 +146,7 @@ async function initChat(appointmentId: string): Promise<void> {
   });
 
   console.log(`[chat init] step 2/2: sendChoiceRequest`);
-  await sendChoiceRequest(a.kobilSub, "Termin bestätigen?", [
+  await sendChoiceRequest(recipient, "Termin bestätigen?", [
     ChatChoice.CONFIRM,
     ChatChoice.CANCEL,
   ]);

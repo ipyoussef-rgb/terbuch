@@ -67,9 +67,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Missing userId" }, { status: 400 });
   }
 
-  // Primary lookup: by stored kobilSub.
+  // KOBIL Mercury identifies recipients by username/email, but OIDC stored
+  // the `sub` as kobilSub. Try both: email first (case-insensitive), then sub.
   let appointment = await db.appointment.findFirst({
-    where: { kobilSub: userId },
+    where: {
+      OR: [{ email: { equals: userId, mode: "insensitive" } }, { kobilSub: userId }],
+    },
     orderBy: { createdAt: "desc" },
     include: {
       slot: { include: { office: true, service: true } },

@@ -22,14 +22,14 @@ export async function POST(req: NextRequest) {
 
   const a = await db.appointment.findUnique({
     where: { id: parsed.data.appointmentId },
-    select: { id: true, kobilSub: true },
+    select: { id: true, email: true },
   });
   if (!a) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
   try {
-    await sendPlainText(a.kobilSub, parsed.data.text);
+    await sendPlainText(a.email, parsed.data.text);
   } catch (e) {
     console.error("[admin send] failed", e);
     return NextResponse.json(
