@@ -43,7 +43,7 @@ export function mapUserClaims(raw: RawClaims): UserClaims {
     lastName: read(node, "family_name", "lastName"),
     email: read(node, "email"),
     phone: read(node, "phone", "phone_number", "phoneNumber"),
-    birthdate: read(node, "birthdate", "birthDate"),
+    birthdate: read(node, "bod", "birthdate", "birthDate"),
     street:
       read(node, "street", "street_address") ?? oidcAddressGet("street_address"),
     postalCode: read(node, "postal_code", "postalCode") ?? oidcAddressGet("postal_code"),
