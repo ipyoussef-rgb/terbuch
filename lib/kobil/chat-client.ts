@@ -8,8 +8,15 @@ async function getChatToken(): Promise<string> {
   if (tokenCache && tokenCache.expiresAt > Date.now() + 60_000) {
     return tokenCache.token;
   }
+  console.log("[mercury] requesting client_credentials token");
   const config = await oidcConfig("chat");
-  const tokens = await oidc.clientCredentialsGrant(config, { scope: "openid" });
+  let tokens;
+  try {
+    tokens = await oidc.clientCredentialsGrant(config, { scope: "openid" });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    throw new Error(`KOBIL Chat token request failed (check Service Accounts on chat client): ${msg}`);
+  }
   if (!tokens.access_token) {
     throw new Error("KOBIL Chat: client_credentials returned no access_token");
   }
@@ -17,6 +24,7 @@ async function getChatToken(): Promise<string> {
     token: tokens.access_token,
     expiresAt: Date.now() + (tokens.expires_in ?? 300) * 1000,
   };
+  console.log("[mercury] got token");
   return tokens.access_token;
 }
 
@@ -50,17 +58,24 @@ async function send(userId: string, body: MessageBody): Promise<unknown> {
     .replace("{serviceUuid}", encodeURIComponent(serviceUuid()))
     .replace("{userId}", encodeURIComponent(userId));
   const url = `${base()}${path}`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body),
-  });
+  console.log(`[mercury] POST ${url} (type=${body.messageType})`);
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    throw new Error(`Mercury fetch failed for ${url}: ${msg}`);
+  }
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(`Mercury ${res.status}: ${text}`);
+    throw new Error(`Mercury ${res.status} ${res.statusText} at ${url}: ${text.slice(0, 500)}`);
   }
   try {
     return await res.json();

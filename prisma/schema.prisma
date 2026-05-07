@@ -91,6 +91,7 @@ model Appointment {
   confirmedAt     DateTime?
   cancelledAt     DateTime?
   chatThreadId    String?
+  chatInitError   String?
 
   messages ChatMessage[]
 

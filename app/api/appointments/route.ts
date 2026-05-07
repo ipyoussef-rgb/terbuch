@@ -84,15 +84,27 @@ export async function POST(req: NextRequest) {
     throw e;
   });
 
-  // Fire-and-forget chat init (don't block the booking on chat errors).
-  void initChat(appointment.id).catch((err) => {
-    console.error("[chat init] failed", err);
+  // Fire-and-forget chat init: don't block the booking response on chat errors,
+  // but capture the error on the appointment so it shows up in the admin UI.
+  void initChat(appointment.id).catch(async (err) => {
+    const msg = err instanceof Error ? `${err.message}` : String(err);
+    console.error(`[chat init] FAILED for appointment ${appointment.id}:`, msg);
+    if (err instanceof Error && err.stack) console.error(err.stack);
+    try {
+      await db.appointment.update({
+        where: { id: appointment.id },
+        data: { chatInitError: msg.slice(0, 1000) },
+      });
+    } catch (e) {
+      console.error("[chat init] could not persist error:", e);
+    }
   });
 
   return NextResponse.json({ id: appointment.id });
 }
 
 async function initChat(appointmentId: string): Promise<void> {
+  console.log(`[chat init] start for appointment ${appointmentId}`);
   const a = await db.appointment.findUnique({
     where: { id: appointmentId },
     include: {
@@ -100,7 +112,14 @@ async function initChat(appointmentId: string): Promise<void> {
       serviceOption: true,
     },
   });
-  if (!a) return;
+  if (!a) {
+    console.warn(`[chat init] appointment ${appointmentId} not found`);
+    return;
+  }
+
+  console.log(
+    `[chat init] target sub=${a.kobilSub} office=${a.slot.office.name} startsAt=${a.slot.startsAt.toISOString()}`,
+  );
 
   const summary = {
     serviceName: a.slot.service.name,
@@ -111,6 +130,7 @@ async function initChat(appointmentId: string): Promise<void> {
     firstName: a.firstName,
   };
 
+  console.log(`[chat init] step 1/2: sendPlainText`);
   await sendPlainText(a.kobilSub, greetingText(summary));
   await db.chatMessage.create({
     data: {
@@ -121,6 +141,7 @@ async function initChat(appointmentId: string): Promise<void> {
     },
   });
 
+  console.log(`[chat init] step 2/2: sendChoiceRequest`);
   await sendChoiceRequest(a.kobilSub, "Termin bestätigen?", [
     ChatChoice.CONFIRM,
     ChatChoice.CANCEL,
@@ -133,4 +154,11 @@ async function initChat(appointmentId: string): Promise<void> {
       body: `${ChatChoice.CONFIRM} | ${ChatChoice.CANCEL}`,
     },
   });
+
+  await db.appointment.update({
+    where: { id: a.id },
+    data: { chatInitError: null },
+  });
+
+  console.log(`[chat init] done for appointment ${appointmentId}`);
 }
