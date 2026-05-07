@@ -1,6 +1,11 @@
+import { PrismaNeon } from "@prisma/adapter-neon";
 import { PrismaClient } from "@prisma/client";
 
-const db = new PrismaClient();
+const connectionString = process.env.DATABASE_URL;
+if (!connectionString) {
+  throw new Error("DATABASE_URL is not set");
+}
+const db = new PrismaClient({ adapter: new PrismaNeon({ connectionString }) });
 
 type ServiceSeed = {
   slug: string;
