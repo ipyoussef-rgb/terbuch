@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
+
+export const maxDuration = 60;
 import { getSession } from "@/lib/auth/session";
 import { sendPlainText } from "@/lib/kobil/chat-client";
 

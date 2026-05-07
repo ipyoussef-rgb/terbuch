@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
+
+// Allow longer execution: client_credentials + 2 Mercury POSTs can cumulatively
+// exceed Vercel's default 10s.
+export const maxDuration = 60;
 import { getSession } from "@/lib/auth/session";
 import {
   ChatChoice,

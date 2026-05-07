@@ -1,6 +1,4 @@
 import "server-only";
-import * as oidc from "openid-client";
-import { oidcConfig } from "@/lib/auth/oidc";
 
 let tokenCache: { token: string; expiresAt: number } | null = null;
 
@@ -18,27 +16,86 @@ function decodeJwtPayload(jwt: string): Record<string, unknown> | null {
   }
 }
 
+const TOKEN_TIMEOUT_MS = 8_000;
+const TOKEN_RETRIES = 2;
+
+type TokenResponse = {
+  access_token: string;
+  expires_in?: number;
+  scope?: string;
+  token_type?: string;
+};
+
+async function fetchTokenOnce(): Promise<TokenResponse> {
+  const issuer = process.env.KOBIL_IDP_ISSUER;
+  const clientId = process.env.KOBIL_CHAT_CLIENT_ID;
+  const clientSecret = process.env.KOBIL_CHAT_CLIENT_SECRET;
+  if (!issuer || !clientId || !clientSecret) {
+    throw new Error(
+      "Missing KOBIL_IDP_ISSUER / KOBIL_CHAT_CLIENT_ID / KOBIL_CHAT_CLIENT_SECRET",
+    );
+  }
+  const url = `${issuer.replace(/\/$/, "")}/protocol/openid-connect/token`;
+  const basic = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      Accept: "application/json",
+      Authorization: `Basic ${basic}`,
+    },
+    body: new URLSearchParams({ grant_type: "client_credentials" }).toString(),
+    signal: AbortSignal.timeout(TOKEN_TIMEOUT_MS),
+  });
+  const text = await res.text().catch(() => "");
+  if (!res.ok) {
+    throw new Error(
+      `Token endpoint ${res.status} ${res.statusText} at ${url}: ${text.slice(0, 300)}`,
+    );
+  }
+  try {
+    return JSON.parse(text) as TokenResponse;
+  } catch {
+    throw new Error(`Token endpoint returned non-JSON: ${text.slice(0, 300)}`);
+  }
+}
+
 async function getChatToken(): Promise<string> {
   if (tokenCache && tokenCache.expiresAt > Date.now() + 60_000) {
     console.log("[mercury] reusing cached token");
     return tokenCache.token;
   }
   console.log(
-    `[mercury] requesting client_credentials token clientId=${process.env.KOBIL_CHAT_CLIENT_ID?.slice(0, 8)}…`,
+    `[mercury] requesting client_credentials token clientId=${process.env.KOBIL_CHAT_CLIENT_ID?.slice(0, 8)}… (timeout=${TOKEN_TIMEOUT_MS}ms, retries=${TOKEN_RETRIES})`,
   );
-  const config = await oidcConfig("chat");
-  let tokens;
-  try {
-    tokens = await oidc.clientCredentialsGrant(config, {});
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
+
+  let tokens: TokenResponse | undefined;
+  let lastErr: unknown;
+  for (let attempt = 0; attempt <= TOKEN_RETRIES; attempt++) {
+    try {
+      const t0 = Date.now();
+      tokens = await fetchTokenOnce();
+      console.log(`[mercury] token obtained in ${Date.now() - t0}ms (attempt ${attempt + 1})`);
+      break;
+    } catch (e) {
+      lastErr = e;
+      const msg = e instanceof Error ? e.message : String(e);
+      console.warn(
+        `[mercury] token attempt ${attempt + 1}/${TOKEN_RETRIES + 1} failed: ${msg}`,
+      );
+    }
+  }
+
+  if (!tokens) {
+    const msg = lastErr instanceof Error ? lastErr.message : String(lastErr);
     throw new Error(
-      `KOBIL Chat token request failed (check Service Accounts on chat client): ${msg}`,
+      `KOBIL Chat token request failed after ${TOKEN_RETRIES + 1} attempts (check Service Accounts on chat client + IDP reachability): ${msg}`,
     );
   }
   if (!tokens.access_token) {
     throw new Error("KOBIL Chat: client_credentials returned no access_token");
   }
+
   const payload = decodeJwtPayload(tokens.access_token);
   console.log(
     `[mercury] got token expires_in=${tokens.expires_in} scope=${tokens.scope ?? "(none)"} ` +

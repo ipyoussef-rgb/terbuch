@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+
+// Vercel Hobby allows up to 60s when explicitly configured (default 10s).
+// Token + Mercury calls can take 5-10s combined.
+export const maxDuration = 60;
 import {
   ChatChoice,
   sendChoiceRequest,
