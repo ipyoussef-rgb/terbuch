@@ -4,15 +4,32 @@ import { oidcConfig } from "@/lib/auth/oidc";
 
 let tokenCache: { token: string; expiresAt: number } | null = null;
 
+function decodeJwtPayload(jwt: string): Record<string, unknown> | null {
+  try {
+    const parts = jwt.split(".");
+    if (parts.length < 2) return null;
+    const json = Buffer.from(
+      parts[1].replace(/-/g, "+").replace(/_/g, "/"),
+      "base64",
+    ).toString("utf-8");
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
+}
+
 async function getChatToken(): Promise<string> {
   if (tokenCache && tokenCache.expiresAt > Date.now() + 60_000) {
+    console.log("[mercury] reusing cached token");
     return tokenCache.token;
   }
-  console.log("[mercury] requesting client_credentials token");
+  console.log(
+    `[mercury] requesting client_credentials token clientId=${process.env.KOBIL_CHAT_CLIENT_ID?.slice(0, 8)}…`,
+  );
   const config = await oidcConfig("chat");
   let tokens;
   try {
-    tokens = await oidc.clientCredentialsGrant(config, { scope: "openid" });
+    tokens = await oidc.clientCredentialsGrant(config, {});
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     throw new Error(
@@ -22,11 +39,17 @@ async function getChatToken(): Promise<string> {
   if (!tokens.access_token) {
     throw new Error("KOBIL Chat: client_credentials returned no access_token");
   }
+  const payload = decodeJwtPayload(tokens.access_token);
+  console.log(
+    `[mercury] got token expires_in=${tokens.expires_in} scope=${tokens.scope ?? "(none)"} ` +
+      `iss=${payload?.iss} aud=${JSON.stringify(payload?.aud)} ` +
+      `azp=${payload?.azp} sub=${payload?.sub} ` +
+      `tokenPrefix=${tokens.access_token.slice(0, 16)}…`,
+  );
   tokenCache = {
     token: tokens.access_token,
     expiresAt: Date.now() + (tokens.expires_in ?? 300) * 1000,
   };
-  console.log("[mercury] got token");
   return tokens.access_token;
 }
 
@@ -47,11 +70,6 @@ function realm(): string {
   throw new Error("KOBIL realm not configured (set KOBIL_REALM or KOBIL_IDP_ISSUER)");
 }
 
-/**
- * The Mercury body requires a `serviceUuid` — the OIDC client_id of the
- * chat-app/service. Defaults to KOBIL_CHAT_CLIENT_ID; can be overridden
- * via KOBIL_CHAT_SERVICE_UUID.
- */
 function serviceUuid(): string {
   const v =
     process.env.KOBIL_CHAT_SERVICE_UUID || process.env.KOBIL_CHAT_CLIENT_ID;
@@ -89,8 +107,12 @@ async function send(userId: string, content: OutboundContent): Promise<unknown> 
     version: 3,
     ...content,
   };
+  const bodyJson = JSON.stringify(body);
 
-  console.log(`[mercury] POST ${url} (type=${content.messageType})`);
+  console.log(
+    `[mercury] POST ${url}\n` +
+      `        body=${bodyJson}`,
+  );
 
   let res: Response;
   try {
@@ -99,31 +121,38 @@ async function send(userId: string, content: OutboundContent): Promise<unknown> 
       headers: {
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
+        Accept: "application/json",
       },
-      body: JSON.stringify(body),
+      body: bodyJson,
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     throw new Error(`Mercury fetch failed for ${url}: ${msg}`);
   }
 
+  const respText = await res.text().catch(() => "");
+  const reqId =
+    res.headers.get("x-request-id") ??
+    res.headers.get("x-correlation-id") ??
+    res.headers.get("traceparent") ??
+    "—";
+  console.log(
+    `[mercury] response status=${res.status} ${res.statusText} reqId=${reqId} body=${respText.slice(0, 500)}`,
+  );
+
   if (!res.ok) {
-    const text = await res.text().catch(() => "");
     throw new Error(
-      `Mercury ${res.status} ${res.statusText} at ${url}: ${text.slice(0, 500)}`,
+      `Mercury ${res.status} ${res.statusText} at ${url}: ${respText.slice(0, 500)}`,
     );
   }
+
   try {
-    return await res.json();
+    return respText ? JSON.parse(respText) : {};
   } catch {
-    return {};
+    return { raw: respText };
   }
 }
 
-/**
- * Send a plain-text chat message.
- * Per Postman collection: messageType = "processChatMessage".
- */
 export async function sendPlainText(
   userId: string,
   text: string,
