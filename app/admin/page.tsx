@@ -30,50 +30,68 @@ export default async function AdminDashboardPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-3xl font-semibold tracking-tight">Dashboard</h1>
-        <p className="text-neutral-600 mt-1 text-sm">
+        <span className="inline-block text-xs font-semibold uppercase tracking-wider text-[var(--color-kobil-blue)]">
           {format(today, "EEEE, d. MMMM yyyy", { locale: de })}
-        </p>
+        </span>
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight mt-2">
+          Dashboard
+        </h1>
       </div>
 
-      <div className="grid sm:grid-cols-3 gap-4">
-        <Stat label="Bestätigt" value={confirmedCount} />
-        <Stat label="Wartet auf Bestätigung" value={pendingCount} />
-        <Stat label="Abgebrochen" value={cancelledCount} />
+      <div className="grid grid-cols-3 gap-3 sm:gap-4">
+        <Stat
+          label="Bestätigt"
+          value={confirmedCount}
+          tone="green"
+        />
+        <Stat
+          label="Offen"
+          value={pendingCount}
+          tone="amber"
+        />
+        <Stat
+          label="Abgebrochen"
+          value={cancelledCount}
+          tone="rose"
+        />
       </div>
 
       <div>
         <div className="flex items-baseline justify-between mb-3">
-          <h2 className="text-lg font-medium">Termine heute</h2>
+          <h2 className="text-base sm:text-lg font-semibold tracking-tight">
+            Termine heute
+          </h2>
           <Link
             href="/admin/appointments"
-            className="text-sm text-neutral-500 hover:text-neutral-900"
+            className="text-xs sm:text-sm text-[var(--color-kobil-blue)] hover:underline"
           >
             Alle Termine →
           </Link>
         </div>
         {todays.length === 0 ? (
-          <div className="rounded-lg border border-neutral-200 bg-white p-6 text-sm text-neutral-600">
+          <div className="rounded-2xl border border-dashed border-[var(--color-kobil-line)] bg-white p-8 text-center text-sm text-[var(--color-kobil-navy)]/60">
             Heute sind keine Termine geplant.
           </div>
         ) : (
-          <ul className="divide-y divide-neutral-200 bg-white rounded-lg border border-neutral-200">
+          <ul className="bg-white rounded-2xl border border-[var(--color-kobil-line)] divide-y divide-[var(--color-kobil-line)] overflow-hidden">
             {todays.map((a) => (
               <li key={a.id}>
                 <Link
                   href={`/admin/appointments/${a.id}`}
-                  className="flex items-center justify-between p-4 hover:bg-neutral-50"
+                  className="flex items-center gap-3 sm:gap-4 p-3 sm:p-4 hover:bg-[var(--color-kobil-mist-50)] transition-colors"
                 >
-                  <div className="flex items-center gap-4">
-                    <span className="text-sm font-medium tabular-nums w-14">
+                  <div className="shrink-0 w-14 sm:w-16 text-center">
+                    <div className="text-base sm:text-lg font-semibold tabular-nums">
                       {format(a.slot.startsAt, "HH:mm")}
-                    </span>
-                    <span className="text-sm">
+                    </div>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm sm:text-base font-medium truncate">
                       {a.firstName} {a.lastName}
-                    </span>
-                    <span className="text-xs text-neutral-500">
-                      {a.slot.service.name} · {a.serviceOption.name} · {a.slot.office.name}
-                    </span>
+                    </div>
+                    <div className="text-xs text-[var(--color-kobil-navy)]/55 truncate">
+                      {a.serviceOption.name} · {a.slot.office.name}
+                    </div>
                   </div>
                   <StatusBadge status={a.status} />
                 </Link>
@@ -86,23 +104,48 @@ export default async function AdminDashboardPage() {
   );
 }
 
-function Stat({ label, value }: { label: string; value: number }) {
+function Stat({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number;
+  tone: "green" | "amber" | "rose";
+}) {
+  const accent =
+    tone === "green"
+      ? "bg-emerald-500"
+      : tone === "amber"
+        ? "bg-amber-500"
+        : "bg-rose-500";
   return (
-    <div className="rounded-lg border border-neutral-200 bg-white p-4">
-      <div className="text-2xl font-semibold tabular-nums">{value}</div>
-      <div className="text-xs text-neutral-500 mt-1">{label}</div>
+    <div className="rounded-2xl border border-[var(--color-kobil-line)] bg-white p-4 sm:p-5 relative overflow-hidden">
+      <span className={`absolute left-0 top-0 bottom-0 w-1 ${accent}`} />
+      <div className="text-2xl sm:text-3xl font-bold tabular-nums">{value}</div>
+      <div className="text-[10px] sm:text-xs text-[var(--color-kobil-navy)]/60 mt-1 uppercase tracking-wider font-medium">
+        {label}
+      </div>
     </div>
   );
 }
 
-function StatusBadge({ status }: { status: "PENDING" | "CONFIRMED" | "CANCELLED" }) {
-  const cls =
+function StatusBadge({
+  status,
+}: {
+  status: "PENDING" | "CONFIRMED" | "CANCELLED";
+}) {
+  const cfg =
     status === "CONFIRMED"
-      ? "bg-green-100 text-green-800"
+      ? { cls: "bg-emerald-50 text-emerald-700 border-emerald-200", label: "Bestätigt" }
       : status === "CANCELLED"
-        ? "bg-red-100 text-red-800"
-        : "bg-amber-100 text-amber-800";
-  const label =
-    status === "CONFIRMED" ? "Bestätigt" : status === "CANCELLED" ? "Abgebrochen" : "Offen";
-  return <span className={`text-xs rounded px-2 py-0.5 ${cls}`}>{label}</span>;
+        ? { cls: "bg-rose-50 text-rose-700 border-rose-200", label: "Storno" }
+        : { cls: "bg-amber-50 text-amber-700 border-amber-200", label: "Offen" };
+  return (
+    <span
+      className={`shrink-0 text-[10px] sm:text-xs rounded-full px-2 sm:px-2.5 py-0.5 sm:py-1 border font-medium ${cfg.cls}`}
+    >
+      {cfg.label}
+    </span>
+  );
 }

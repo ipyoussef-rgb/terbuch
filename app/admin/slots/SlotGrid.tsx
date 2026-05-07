@@ -6,10 +6,10 @@ import { useRouter } from "next/navigation";
 type SlotStatus = "FREE" | "PENDING" | "BOOKED" | "BLOCKED";
 
 const STATUS_STYLE: Record<SlotStatus, string> = {
-  FREE: "bg-white border-neutral-300 text-neutral-700",
-  PENDING: "bg-amber-100 border-amber-300 text-amber-800",
-  BOOKED: "bg-green-100 border-green-300 text-green-800",
-  BLOCKED: "bg-neutral-200 border-neutral-300 text-neutral-500 line-through",
+  FREE: "bg-white border-[var(--color-kobil-line)] text-[var(--color-kobil-navy)] hover:border-[var(--color-kobil-blue)] hover:bg-[var(--color-kobil-mist-50)]",
+  PENDING: "bg-amber-50 border-amber-200 text-amber-800 cursor-not-allowed",
+  BOOKED: "bg-emerald-50 border-emerald-200 text-emerald-800 cursor-not-allowed",
+  BLOCKED: "bg-[var(--color-kobil-mist)] border-[var(--color-kobil-line)] text-[var(--color-kobil-navy)]/40 line-through hover:border-[var(--color-kobil-blue)]",
 };
 
 export default function SlotGrid({
@@ -38,7 +38,7 @@ export default function SlotGrid({
   }
 
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-2">
       {slots.map((s) => {
         const interactive = s.status === "FREE" || s.status === "BLOCKED";
         return (
@@ -48,9 +48,9 @@ export default function SlotGrid({
             disabled={!interactive || busy === s.id}
             onClick={() => toggle(s.id, s.status)}
             title={`${s.status} — klicken zum Wechseln`}
-            className={`rounded border px-3 py-2 text-sm tabular-nums ${STATUS_STYLE[s.status]} ${
-              interactive ? "hover:border-neutral-900 cursor-pointer" : "cursor-not-allowed"
-            } ${busy === s.id ? "opacity-50" : ""}`}
+            className={`rounded-lg border px-3 py-2 text-sm font-medium tabular-nums transition-colors ${STATUS_STYLE[s.status]} ${
+              busy === s.id ? "opacity-50" : ""
+            }`}
           >
             {s.time}
           </button>

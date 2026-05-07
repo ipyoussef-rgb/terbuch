@@ -32,7 +32,7 @@ export default function OfficePicker({
 
   useEffect(() => {
     if (typeof window === "undefined" || !navigator.geolocation) {
-      setGeo({ kind: "error", msg: "Geolocation nicht verfügbar" });
+      setGeo({ kind: "error", msg: "nicht verfügbar" });
       return;
     }
     setGeo({ kind: "loading" });
@@ -44,65 +44,111 @@ export default function OfficePicker({
           lng: pos.coords.longitude,
         }),
       (err) => {
-        if (err.code === err.PERMISSION_DENIED) {
-          setGeo({ kind: "denied" });
-        } else {
-          setGeo({ kind: "error", msg: err.message });
-        }
+        if (err.code === err.PERMISSION_DENIED) setGeo({ kind: "denied" });
+        else setGeo({ kind: "error", msg: err.message });
       },
       { timeout: 10_000, maximumAge: 60_000 },
     );
   }, []);
 
   const sorted = useMemo(() => {
-    if (geo.kind !== "ready") return offices;
+    if (geo.kind !== "ready") return offices.map((o) => ({ ...o, distanceKm: undefined as number | undefined }));
     return [...offices]
       .map((o) => ({
         ...o,
         distanceKm: haversineKm(
           { lat: geo.lat, lng: geo.lng },
           { lat: o.lat, lng: o.lng },
-        ),
+        ) as number | undefined,
       }))
       .sort((a, b) => (a.distanceKm ?? 0) - (b.distanceKm ?? 0));
   }, [offices, geo]);
 
   return (
     <div className="space-y-4">
-      <div className="text-sm text-neutral-500">
-        {geo.kind === "loading" && "Standort wird ermittelt …"}
-        {geo.kind === "ready" && "Sortiert nach Entfernung zu Ihrem Standort."}
-        {geo.kind === "denied" &&
-          "Standortzugriff verweigert — Ämter werden ohne Sortierung angezeigt."}
-        {geo.kind === "error" &&
-          `Standort nicht verfügbar (${geo.msg}) — Sortierung deaktiviert.`}
-      </div>
+      <GeoBanner geo={geo} />
 
-      <ul className="divide-y divide-neutral-200 bg-white rounded-lg border border-neutral-200">
+      <div className="grid sm:grid-cols-2 gap-3 sm:gap-4">
         {sorted.map((o) => (
-          <li key={o.id}>
-            <Link
-              href={`/slots?option=${optionId}&office=${o.id}`}
-              className="flex items-center justify-between p-4 hover:bg-neutral-50"
-            >
-              <div>
-                <div className="font-medium">{o.name}</div>
-                <div className="text-sm text-neutral-500">
-                  {o.street}, {o.postalCode} {o.city}
+          <Link
+            key={o.id}
+            href={`/slots?option=${optionId}&office=${o.id}`}
+            className="group bg-white rounded-2xl border border-[var(--color-kobil-line)] p-5 hover:border-[var(--color-kobil-blue)] hover:shadow-[var(--shadow-card)] transition-all"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="font-semibold tracking-tight">{o.name}</div>
+                <div className="text-sm text-[var(--color-kobil-navy)]/60 mt-1 leading-snug">
+                  {o.street}
+                  <br />
+                  {o.postalCode} {o.city}
                 </div>
               </div>
-              <div className="text-right">
-                {"distanceKm" in o && typeof o.distanceKm === "number" ? (
-                  <div className="text-sm text-neutral-600 tabular-nums">
-                    {o.distanceKm.toFixed(1)} km
-                  </div>
-                ) : null}
-                <div className="text-neutral-400">→</div>
-              </div>
-            </Link>
-          </li>
+              {typeof o.distanceKm === "number" ? (
+                <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-[var(--color-kobil-mist)] px-2.5 py-1 text-xs font-medium text-[var(--color-kobil-blue)] tabular-nums">
+                  <svg viewBox="0 0 16 16" className="w-3 h-3" aria-hidden="true">
+                    <path
+                      d="M8 2c-2.5 0-4.5 2-4.5 4.5 0 3.5 4.5 7.5 4.5 7.5s4.5-4 4.5-7.5C12.5 4 10.5 2 8 2Z"
+                      stroke="currentColor"
+                      strokeWidth="1.4"
+                      fill="none"
+                    />
+                    <circle cx="8" cy="6.5" r="1.5" fill="currentColor" />
+                  </svg>
+                  {o.distanceKm.toFixed(1)} km
+                </span>
+              ) : null}
+            </div>
+            <div className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-[var(--color-kobil-blue)]">
+              Termine ansehen
+              <svg
+                viewBox="0 0 16 16"
+                className="w-3.5 h-3.5 transition-transform group-hover:translate-x-1"
+                aria-hidden="true"
+              >
+                <path
+                  d="M3 8h10m0 0L9 4m4 4-4 4"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  fill="none"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </div>
+          </Link>
         ))}
-      </ul>
+      </div>
+    </div>
+  );
+}
+
+function GeoBanner({ geo }: { geo: GeoState }) {
+  if (geo.kind === "idle" || geo.kind === "loading") {
+    return (
+      <div className="rounded-xl bg-[var(--color-kobil-mist-50)] border border-[var(--color-kobil-line)] px-4 py-3 text-sm text-[var(--color-kobil-navy)]/70">
+        <span className="inline-block w-2 h-2 rounded-full bg-[var(--color-kobil-blue)] animate-pulse mr-2 align-middle" />
+        Standort wird ermittelt …
+      </div>
+    );
+  }
+  if (geo.kind === "ready") {
+    return (
+      <div className="rounded-xl bg-[var(--color-kobil-mist-50)] border border-[var(--color-kobil-line)] px-4 py-3 text-sm text-[var(--color-kobil-navy)]/70">
+        Sortiert nach Entfernung zu Ihrem Standort.
+      </div>
+    );
+  }
+  if (geo.kind === "denied") {
+    return (
+      <div className="rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-900">
+        Standortzugriff verweigert — Ämter werden ohne Sortierung angezeigt.
+      </div>
+    );
+  }
+  return (
+    <div className="rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-900">
+      Standort {geo.msg} — Sortierung deaktiviert.
     </div>
   );
 }

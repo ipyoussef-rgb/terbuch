@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { addDays, format, startOfDay } from "date-fns";
 import { de } from "date-fns/locale";
+import { Stepper } from "@/components/Stepper";
 
 export const dynamic = "force-dynamic";
 
@@ -42,39 +43,58 @@ export default async function SlotsPage(props: {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 sm:space-y-8 max-w-3xl">
+      <Link
+        href={`/office?option=${opt.id}`}
+        className="inline-flex items-center gap-1.5 text-sm text-[var(--color-kobil-navy)]/60 hover:text-[var(--color-kobil-blue)]"
+      >
+        <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" aria-hidden="true">
+          <path
+            d="M13 8H3m0 0 4 4M3 8l4-4"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            fill="none"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+        zurück
+      </Link>
+
       <div>
-        <Link
-          href={`/office?option=${opt.id}`}
-          className="text-sm text-neutral-500 hover:text-neutral-900"
-        >
-          ← zurück
-        </Link>
-        <h1 className="text-3xl font-semibold tracking-tight mt-2">
+        <Stepper step={3} />
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight mt-4">
           Freien Termin auswählen
         </h1>
-        <p className="text-neutral-600 mt-2">
-          {opt.service.name} · {opt.name} · {off.name}
+        <p className="text-[var(--color-kobil-navy)]/60 mt-2 text-sm sm:text-base">
+          {opt.service.name} · {opt.name}
+          <br className="sm:hidden" />
+          <span className="text-[var(--color-kobil-navy)]/40 sm:ml-1"> bei </span>
+          <span className="font-medium text-[var(--color-kobil-navy)]">
+            {off.name}
+          </span>
         </p>
       </div>
 
       {slots.length === 0 ? (
-        <div className="rounded-lg border border-neutral-200 bg-white p-6 text-neutral-600">
-          Aktuell keine freien Termine in den nächsten 14 Tagen.
+        <div className="rounded-2xl border border-[var(--color-kobil-line)] bg-white p-8 text-center">
+          <div className="text-[var(--color-kobil-navy)]/60 text-sm">
+            Aktuell keine freien Termine in den nächsten 14 Tagen.
+          </div>
         </div>
       ) : (
         <div className="space-y-6">
           {[...byDay.entries()].map(([day, daySlots]) => (
-            <div key={day}>
-              <h2 className="text-sm font-medium text-neutral-500 mb-2">
+            <div key={day} className="bg-white rounded-2xl border border-[var(--color-kobil-line)] p-4 sm:p-5">
+              <h2 className="text-sm font-semibold text-[var(--color-kobil-navy)] mb-3">
                 {format(new Date(day), "EEEE, d. MMMM yyyy", { locale: de })}
               </h2>
-              <div className="flex flex-wrap gap-2">
+              <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 gap-2">
                 {daySlots.map((s) => (
                   <Link
                     key={s.id}
                     href={`/book?option=${opt.id}&office=${off.id}&slot=${s.id}`}
-                    className="rounded border border-neutral-300 bg-white px-3 py-2 text-sm hover:border-neutral-900 hover:bg-neutral-50 tabular-nums"
+                    className="rounded-lg border border-[var(--color-kobil-line)] bg-white px-3 py-2.5 text-sm font-medium text-center tabular-nums hover:border-[var(--color-kobil-blue)] hover:bg-[var(--color-kobil-mist-50)] hover:text-[var(--color-kobil-blue)] transition-colors"
                   >
                     {format(s.startsAt, "HH:mm")}
                   </Link>

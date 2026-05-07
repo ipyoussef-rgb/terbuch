@@ -65,89 +65,94 @@ export default function BookingForm({
     }
   }
 
-  const fieldClass =
-    "w-full rounded border border-neutral-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-900";
-
   return (
-    <form onSubmit={onSubmit} className="space-y-6 bg-white border border-neutral-200 rounded-lg p-6">
+    <form
+      onSubmit={onSubmit}
+      className="bg-white border border-[var(--color-kobil-line)] rounded-2xl p-5 sm:p-6 space-y-6 shadow-[var(--shadow-card)]"
+    >
+      <div>
+        <h2 className="text-base font-semibold tracking-tight">
+          Ihre Daten
+        </h2>
+        <p className="text-xs text-[var(--color-kobil-navy)]/60 mt-1">
+          Aus Ihrer KOBIL Identity vorausgefüllt — Sie können alles anpassen.
+        </p>
+      </div>
+
       <div className="grid sm:grid-cols-2 gap-4">
-        <Field label="Vorname">
-          <input
-            className={fieldClass}
+        <Field label="Vorname" required>
+          <Input
             value={form.firstName}
-            onChange={(e) => update("firstName", e.target.value)}
+            onChange={(v) => update("firstName", v)}
             required
           />
         </Field>
-        <Field label="Nachname">
-          <input
-            className={fieldClass}
+        <Field label="Nachname" required>
+          <Input
             value={form.lastName}
-            onChange={(e) => update("lastName", e.target.value)}
+            onChange={(v) => update("lastName", v)}
             required
           />
         </Field>
-        <Field label="E-Mail">
-          <input
+        <Field label="E-Mail" required>
+          <Input
             type="email"
-            className={fieldClass}
             value={form.email}
-            onChange={(e) => update("email", e.target.value)}
+            onChange={(v) => update("email", v)}
             required
           />
         </Field>
         <Field label="Telefonnummer">
-          <input
+          <Input
             type="tel"
-            className={fieldClass}
             value={form.phone}
-            onChange={(e) => update("phone", e.target.value)}
+            onChange={(v) => update("phone", v)}
           />
         </Field>
         <Field label="Geburtsdatum">
-          <input
+          <Input
             type="date"
-            className={fieldClass}
             value={form.birthdate ? form.birthdate.slice(0, 10) : ""}
-            onChange={(e) => update("birthdate", e.target.value)}
+            onChange={(v) => update("birthdate", v)}
           />
         </Field>
-        <Field label="Straße und Hausnummer">
-          <input
-            className={fieldClass}
+        <Field label="Straße und Hausnummer" required>
+          <Input
             value={form.street}
-            onChange={(e) => update("street", e.target.value)}
+            onChange={(v) => update("street", v)}
             required
           />
         </Field>
-        <Field label="PLZ">
-          <input
-            className={fieldClass}
+        <Field label="PLZ" required>
+          <Input
             value={form.postalCode}
-            onChange={(e) => update("postalCode", e.target.value)}
+            onChange={(v) => update("postalCode", v)}
             required
           />
         </Field>
-        <Field label="Wohnort">
-          <input
-            className={fieldClass}
+        <Field label="Wohnort" required>
+          <Input
             value={form.city}
-            onChange={(e) => update("city", e.target.value)}
+            onChange={(v) => update("city", v)}
             required
           />
         </Field>
       </div>
 
-      <label className="flex items-start gap-3 text-sm text-neutral-700">
+      <label className="flex items-start gap-3 text-sm text-[var(--color-kobil-navy)]/80 bg-[var(--color-kobil-mist-50)] border border-[var(--color-kobil-line)] rounded-xl p-4 cursor-pointer hover:border-[var(--color-kobil-blue)]/50 transition-colors">
         <input
           type="checkbox"
           checked={privacy}
           onChange={(e) => setPrivacy(e.target.checked)}
-          className="mt-1"
+          className="mt-0.5 h-4 w-4 rounded border-[var(--color-kobil-line)] text-[var(--color-kobil-blue)] focus:ring-[var(--color-kobil-blue)] cursor-pointer"
         />
         <span>
           Ich stimme der Verarbeitung meiner Daten zur Terminbuchung gemäß der{" "}
-          <a href="/datenschutz" target="_blank" className="underline">
+          <a
+            href="/datenschutz"
+            target="_blank"
+            className="underline text-[var(--color-kobil-blue)]"
+          >
             Datenschutzerklärung
           </a>{" "}
           zu.
@@ -155,18 +160,40 @@ export default function BookingForm({
       </label>
 
       {error ? (
-        <div className="rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}
         </div>
       ) : null}
 
-      <div className="flex gap-3">
+      <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-end">
+        <p className="text-xs text-[var(--color-kobil-navy)]/55 sm:flex-1">
+          Sie bestätigen den Termin anschließend in Ihrem KOBIL Chat.
+        </p>
         <button
           type="submit"
           disabled={submitting}
-          className="rounded bg-neutral-900 text-white px-4 py-2 text-sm font-medium disabled:opacity-50"
+          className="inline-flex items-center justify-center gap-2 rounded-full bg-[var(--color-kobil-blue)] text-white px-6 py-3 text-sm font-semibold shadow-[var(--shadow-card)] hover:bg-[var(--color-kobil-blue-600)] active:bg-[var(--color-kobil-blue-700)] disabled:opacity-60 transition-colors"
         >
-          {submitting ? "Reserviere…" : "Reservieren"}
+          {submitting ? (
+            <>
+              <span className="w-4 h-4 rounded-full border-2 border-white/40 border-t-white animate-spin" />
+              Reserviere…
+            </>
+          ) : (
+            <>
+              Reservieren
+              <svg viewBox="0 0 16 16" className="w-4 h-4" aria-hidden="true">
+                <path
+                  d="M3 8h10m0 0L9 4m4 4-4 4"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  fill="none"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </>
+          )}
         </button>
       </div>
     </form>
@@ -175,15 +202,42 @@ export default function BookingForm({
 
 function Field({
   label,
+  required,
   children,
 }: {
   label: string;
+  required?: boolean;
   children: React.ReactNode;
 }) {
   return (
     <label className="block">
-      <span className="block text-sm text-neutral-600 mb-1">{label}</span>
+      <span className="block text-xs font-medium text-[var(--color-kobil-navy)]/70 mb-1.5">
+        {label}
+        {required ? <span className="text-[var(--color-kobil-blue)]"> *</span> : null}
+      </span>
       {children}
     </label>
+  );
+}
+
+function Input({
+  value,
+  onChange,
+  type = "text",
+  required,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  type?: string;
+  required?: boolean;
+}) {
+  return (
+    <input
+      type={type}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      required={required}
+      className="w-full rounded-lg border border-[var(--color-kobil-line)] bg-white px-3 py-2.5 text-sm placeholder:text-[var(--color-kobil-navy)]/30 focus:outline-none focus:border-[var(--color-kobil-blue)] focus:ring-2 focus:ring-[var(--color-kobil-blue)]/20 transition-colors"
+    />
   );
 }
