@@ -15,7 +15,7 @@ import {
 type CallbackDto = {
   message?: {
     serviceUuid?: string;
-    from?: { userId?: string };
+    from?: { userId?: string; [k: string]: unknown };
     content?: {
       messageType?: string;
       messageContent?: {
@@ -23,7 +23,9 @@ type CallbackDto = {
         choices?: { text: string }[];
       };
     };
+    [k: string]: unknown;
   };
+  [k: string]: unknown;
 };
 
 function checkSecret(req: NextRequest): boolean {
@@ -38,28 +40,73 @@ function checkSecret(req: NextRequest): boolean {
 
 export async function POST(req: NextRequest) {
   if (!checkSecret(req)) {
+    console.warn("[webhook] rejected: secret mismatch");
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const dto = (await req.json().catch(() => null)) as CallbackDto | null;
+  const rawBody = await req.text();
+  console.log(`[webhook] inbound payload (${rawBody.length} bytes): ${rawBody.slice(0, 1500)}`);
+
+  let dto: CallbackDto | null;
+  try {
+    dto = rawBody ? (JSON.parse(rawBody) as CallbackDto) : null;
+  } catch {
+    console.warn("[webhook] could not parse JSON body");
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+
   const userId = dto?.message?.from?.userId;
   const messageType = dto?.message?.content?.messageType;
   const messageText = dto?.message?.content?.messageContent?.messageText;
+
+  console.log(
+    `[webhook] parsed userId=${userId} messageType=${messageType} messageText=${JSON.stringify(messageText)}`,
+  );
+
   if (!userId) {
     return NextResponse.json({ error: "Missing userId" }, { status: 400 });
   }
 
-  // Find the most recent appointment for this user
-  const appointment = await db.appointment.findFirst({
+  // Primary lookup: by stored kobilSub.
+  let appointment = await db.appointment.findFirst({
     where: { kobilSub: userId },
     orderBy: { createdAt: "desc" },
     include: {
       slot: { include: { office: true, service: true } },
       serviceOption: true,
+      messages: { take: 1 },
     },
   });
 
+  // Fallback: if no exact match, take the most recent PENDING appointment from
+  // the last 30 minutes — KOBIL Chat may use a different identifier than the
+  // OIDC `sub` we stored. We re-bind the appointment to this chat userId so
+  // future webhook calls match by primary lookup.
+  if (!appointment && messageType === "init") {
+    const since = new Date(Date.now() - 30 * 60 * 1000);
+    const recent = await db.appointment.findFirst({
+      where: { status: "PENDING", createdAt: { gte: since } },
+      orderBy: { createdAt: "desc" },
+      include: {
+        slot: { include: { office: true, service: true } },
+        serviceOption: true,
+        messages: { take: 1 },
+      },
+    });
+    if (recent) {
+      console.log(
+        `[webhook] no kobilSub match for ${userId}; rebinding most-recent PENDING appointment ${recent.id} (was kobilSub=${recent.kobilSub})`,
+      );
+      await db.appointment.update({
+        where: { id: recent.id },
+        data: { kobilSub: userId },
+      });
+      appointment = { ...recent, kobilSub: userId };
+    }
+  }
+
   if (!appointment) {
+    console.log(`[webhook] no appointment found for userId=${userId}; sending fallback`);
     if (messageType === "init") {
       await sendPlainText(
         userId,
@@ -68,6 +115,10 @@ export async function POST(req: NextRequest) {
     }
     return NextResponse.json({ ok: true });
   }
+
+  console.log(
+    `[webhook] matched appointment ${appointment.id} status=${appointment.status}`,
+  );
 
   const summary = {
     serviceName: appointment.slot.service.name,
