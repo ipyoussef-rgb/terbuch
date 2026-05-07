@@ -15,7 +15,9 @@ async function getChatToken(): Promise<string> {
     tokens = await oidc.clientCredentialsGrant(config, { scope: "openid" });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    throw new Error(`KOBIL Chat token request failed (check Service Accounts on chat client): ${msg}`);
+    throw new Error(
+      `KOBIL Chat token request failed (check Service Accounts on chat client): ${msg}`,
+    );
   }
   if (!tokens.access_token) {
     throw new Error("KOBIL Chat: client_credentials returned no access_token");
@@ -35,7 +37,6 @@ function base(): string {
 }
 
 function realm(): string {
-  // Try explicit env first, otherwise extract from issuer URL.
   const explicit = process.env.KOBIL_REALM;
   if (explicit) return explicit;
   const issuer = process.env.KOBIL_IDP_ISSUER;
@@ -46,9 +47,20 @@ function realm(): string {
   throw new Error("KOBIL realm not configured (set KOBIL_REALM or KOBIL_IDP_ISSUER)");
 }
 
-function serviceUuid(): string | undefined {
-  const v = process.env.KOBIL_CHAT_SERVICE_UUID;
-  return v && v.length > 0 ? v : undefined;
+/**
+ * The Mercury body requires a `serviceUuid` — the OIDC client_id of the
+ * chat-app/service. Defaults to KOBIL_CHAT_CLIENT_ID; can be overridden
+ * via KOBIL_CHAT_SERVICE_UUID.
+ */
+function serviceUuid(): string {
+  const v =
+    process.env.KOBIL_CHAT_SERVICE_UUID || process.env.KOBIL_CHAT_CLIENT_ID;
+  if (!v) {
+    throw new Error(
+      "KOBIL_CHAT_SERVICE_UUID (or KOBIL_CHAT_CLIENT_ID as fallback) is not set",
+    );
+  }
+  return v;
 }
 
 function sendPathTemplate(): string {
@@ -58,20 +70,28 @@ function sendPathTemplate(): string {
   );
 }
 
-type MessageBody = {
+type OutboundContent = {
   messageType: string;
   messageContent: Record<string, unknown>;
 };
 
-async function send(userId: string, body: MessageBody): Promise<unknown> {
+async function send(userId: string, content: OutboundContent): Promise<unknown> {
   const token = await getChatToken();
   const svc = serviceUuid();
   const path = sendPathTemplate()
     .replace("{realm}", encodeURIComponent(realm()))
-    .replace("{serviceUuid}", encodeURIComponent(svc ?? ""))
+    .replace("{serviceUuid}", encodeURIComponent(svc))
     .replace("{userId}", encodeURIComponent(userId));
   const url = `${base()}${path}`;
-  console.log(`[mercury] POST ${url} (type=${body.messageType})`);
+
+  const body = {
+    serviceUuid: svc,
+    version: 3,
+    ...content,
+  };
+
+  console.log(`[mercury] POST ${url} (type=${content.messageType})`);
+
   let res: Response;
   try {
     res = await fetch(url, {
@@ -86,9 +106,12 @@ async function send(userId: string, body: MessageBody): Promise<unknown> {
     const msg = e instanceof Error ? e.message : String(e);
     throw new Error(`Mercury fetch failed for ${url}: ${msg}`);
   }
+
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(`Mercury ${res.status} ${res.statusText} at ${url}: ${text.slice(0, 500)}`);
+    throw new Error(
+      `Mercury ${res.status} ${res.statusText} at ${url}: ${text.slice(0, 500)}`,
+    );
   }
   try {
     return await res.json();
@@ -97,14 +120,25 @@ async function send(userId: string, body: MessageBody): Promise<unknown> {
   }
 }
 
+/**
+ * Send a plain-text chat message.
+ * Per Postman collection: messageType = "processChatMessage".
+ */
 export async function sendPlainText(
   userId: string,
   text: string,
 ): Promise<unknown> {
   return send(userId, {
-    messageType: "plainText",
+    messageType: "processChatMessage",
     messageContent: { messageText: text },
   });
+}
+
+export async function sendProcessChatMessage(
+  userId: string,
+  text: string,
+): Promise<unknown> {
+  return sendPlainText(userId, text);
 }
 
 export async function sendChoiceRequest(
@@ -118,16 +152,6 @@ export async function sendChoiceRequest(
       messageText: text,
       choices: choices.map((t) => ({ text: t })),
     },
-  });
-}
-
-export async function sendProcessChatMessage(
-  userId: string,
-  text: string,
-): Promise<unknown> {
-  return send(userId, {
-    messageType: "processChatMessage",
-    messageContent: { messageText: text },
   });
 }
 
