@@ -34,16 +34,27 @@ function base(): string {
   return v.replace(/\/$/, "");
 }
 
-function serviceUuid(): string {
+function realm(): string {
+  // Try explicit env first, otherwise extract from issuer URL.
+  const explicit = process.env.KOBIL_REALM;
+  if (explicit) return explicit;
+  const issuer = process.env.KOBIL_IDP_ISSUER;
+  if (issuer) {
+    const m = issuer.match(/\/realms\/([^/?#]+)/);
+    if (m) return m[1];
+  }
+  throw new Error("KOBIL realm not configured (set KOBIL_REALM or KOBIL_IDP_ISSUER)");
+}
+
+function serviceUuid(): string | undefined {
   const v = process.env.KOBIL_CHAT_SERVICE_UUID;
-  if (!v) throw new Error("KOBIL_CHAT_SERVICE_UUID is not set");
-  return v;
+  return v && v.length > 0 ? v : undefined;
 }
 
 function sendPathTemplate(): string {
   return (
     process.env.KOBIL_CHAT_SEND_PATH ??
-    "/api/v1/services/{serviceUuid}/users/{userId}/messages"
+    "/auth/realms/{realm}/mpower/v1/users/{userId}/message"
   );
 }
 
@@ -54,8 +65,10 @@ type MessageBody = {
 
 async function send(userId: string, body: MessageBody): Promise<unknown> {
   const token = await getChatToken();
+  const svc = serviceUuid();
   const path = sendPathTemplate()
-    .replace("{serviceUuid}", encodeURIComponent(serviceUuid()))
+    .replace("{realm}", encodeURIComponent(realm()))
+    .replace("{serviceUuid}", encodeURIComponent(svc ?? ""))
     .replace("{userId}", encodeURIComponent(userId));
   const url = `${base()}${path}`;
   console.log(`[mercury] POST ${url} (type=${body.messageType})`);
