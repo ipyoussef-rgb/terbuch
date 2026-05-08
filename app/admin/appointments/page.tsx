@@ -16,8 +16,12 @@ export default async function AppointmentsListPage(props: {
     STATUSES.includes(sp.status as StatusFilter) ? sp.status : "ALL"
   ) as StatusFilter;
 
+  // "ALL" = aktive Termine (PENDING + CONFIRMED). Storno nur über expliziten Filter sichtbar.
   const appointments = await db.appointment.findMany({
-    where: filter === "ALL" ? {} : { status: filter },
+    where:
+      filter === "ALL"
+        ? { status: { in: ["PENDING", "CONFIRMED"] } }
+        : { status: filter },
     include: {
       slot: { include: { office: true, service: true } },
       serviceOption: true,
@@ -136,7 +140,7 @@ function Empty() {
 function labelFor(s: StatusFilter): string {
   switch (s) {
     case "ALL":
-      return "Alle";
+      return "Aktiv";
     case "PENDING":
       return "Offen";
     case "CONFIRMED":

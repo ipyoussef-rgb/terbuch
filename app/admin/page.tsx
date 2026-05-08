@@ -15,6 +15,7 @@ export default async function AdminDashboardPage() {
     await Promise.all([
       db.appointment.findMany({
         where: {
+          status: { in: ["PENDING", "CONFIRMED"] },
           slot: {
             startsAt: { gte: startOfDay(today), lte: endOfDay(today) },
           },
