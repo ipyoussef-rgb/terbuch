@@ -194,6 +194,7 @@ export async function POST(req: NextRequest) {
           where: { id: appointment.id },
           data: {
             paymentTransactionId: tx.transactionId,
+            paymentTransactionCreatedAt: new Date(),
             paymentStatus: "PENDING",
           },
         });

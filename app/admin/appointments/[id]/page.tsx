@@ -178,6 +178,8 @@ export default async function AdminAppointmentDetailPage(props: {
               requestedAt: a.paymentRequestedAt?.toISOString() ?? null,
               choice: a.paymentChoice,
               transactionId: a.paymentTransactionId,
+              transactionCreatedAt:
+                a.paymentTransactionCreatedAt?.toISOString() ?? null,
               status: a.paymentStatus,
               rawStatus: a.paymentRawStatus,
               lastCheckedAt: a.paymentLastCheckedAt?.toISOString() ?? null,

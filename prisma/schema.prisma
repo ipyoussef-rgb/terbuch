@@ -98,10 +98,11 @@ model Appointment {
   paymentCurrency        String?
   paymentRequestedAt     DateTime?
   paymentChoice          String?               // "online" | "onsite" | null
-  paymentTransactionId   String?
-  paymentStatus          String?               // SUCCESS | FAILED | PENDING | CANCELLED | INITIATED
-  paymentLastCheckedAt   DateTime?
-  paymentRawStatus       String?               // last raw status field from Pay API
+  paymentTransactionId        String?
+  paymentTransactionCreatedAt DateTime?
+  paymentStatus               String?          // SUCCESS | FAILED | PENDING | CANCELLED | INITIATED | TIMEOUT
+  paymentLastCheckedAt        DateTime?
+  paymentRawStatus            String?          // last raw status field from Pay API
 
   messages ChatMessage[]
 

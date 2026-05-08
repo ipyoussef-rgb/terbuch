@@ -3,6 +3,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { getSession } from "@/lib/auth/session";
 import { getTransactionStatus } from "@/lib/kobil/pay-client";
+import { PAY_DEADLINE_MS } from "@/lib/kobil/payment-config";
 
 export const maxDuration = 60;
 
@@ -21,7 +22,12 @@ export async function POST(req: NextRequest) {
 
   const a = await db.appointment.findUnique({
     where: { id: parsed.data.appointmentId },
-    select: { id: true, paymentTransactionId: true },
+    select: {
+      id: true,
+      paymentTransactionId: true,
+      paymentTransactionCreatedAt: true,
+      paymentStatus: true,
+    },
   });
   if (!a) return NextResponse.json({ error: "Not found" }, { status: 404 });
   if (!a.paymentTransactionId) {
@@ -32,20 +38,48 @@ export async function POST(req: NextRequest) {
   }
 
   const callback = `${process.env.APP_BASE_URL ?? ""}/api/admin/payment-callback`;
-  const status = await getTransactionStatus(a.paymentTransactionId, callback);
+
+  // Already in a final state? Skip the round-trip.
+  const FINAL = ["SUCCESS", "FAILED", "CANCELLED", "TIMEOUT"];
+  if (a.paymentStatus && FINAL.includes(a.paymentStatus)) {
+    return NextResponse.json({
+      ok: true,
+      status: a.paymentStatus,
+      final: true,
+    });
+  }
+
+  let liveStatus: { normalized: string; rawStatus?: string };
+  try {
+    liveStatus = await getTransactionStatus(a.paymentTransactionId, callback);
+  } catch (e) {
+    console.warn("[payment-status-refresh] Pay API error", e);
+    liveStatus = { normalized: a.paymentStatus ?? "UNKNOWN" };
+  }
+
+  // If we're past the Pay-API timeout window and still non-final, mark TIMEOUT.
+  let normalized = liveStatus.normalized;
+  if (
+    !FINAL.includes(normalized) &&
+    a.paymentTransactionCreatedAt &&
+    Date.now() - a.paymentTransactionCreatedAt.getTime() > PAY_DEADLINE_MS
+  ) {
+    normalized = "TIMEOUT";
+  }
 
   await db.appointment.update({
     where: { id: a.id },
     data: {
-      paymentStatus: status.normalized,
-      paymentRawStatus: status.rawStatus ?? null,
+      paymentStatus: normalized,
+      paymentRawStatus: liveStatus.rawStatus ?? null,
       paymentLastCheckedAt: new Date(),
     },
   });
 
   return NextResponse.json({
     ok: true,
-    status: status.normalized,
-    rawStatus: status.rawStatus,
+    status: normalized,
+    rawStatus: liveStatus.rawStatus,
+    final: FINAL.includes(normalized),
   });
 }

@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { PAY_DEADLINE_MS } from "@/lib/kobil/payment-config";
 
 type Initial = {
   amountCents: number | null;
@@ -9,10 +10,13 @@ type Initial = {
   requestedAt: string | null;
   choice: string | null;
   transactionId: string | null;
+  transactionCreatedAt: string | null;
   status: string | null;
   rawStatus: string | null;
   lastCheckedAt: string | null;
 };
+
+const FINAL_STATUSES = new Set(["SUCCESS", "FAILED", "CANCELLED", "TIMEOUT"]);
 
 export default function PaymentPanel({
   appointmentId,
@@ -82,21 +86,43 @@ export default function PaymentPanel({
     }
   }
 
-  // Auto-poll while we're waiting for a final status.
+  // Deadline = transactionCreatedAt + Pay timeout + grace.
+  const deadline = useMemo(() => {
+    if (!initial.transactionCreatedAt) return null;
+    return new Date(initial.transactionCreatedAt).getTime() + PAY_DEADLINE_MS;
+  }, [initial.transactionCreatedAt]);
+
+  // Live countdown for the UI.
+  const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    const pollable =
-      !!initial.transactionId &&
-      (initial.status === "PENDING" ||
-        initial.status === "INITIATED" ||
-        initial.status === "UNKNOWN" ||
-        initial.status === null);
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  const remainingMs = deadline ? Math.max(0, deadline - now) : null;
+  const expired = deadline ? now > deadline : false;
+
+  // Auto-poll while we're waiting for a final status — until deadline.
+  useEffect(() => {
+    const isFinal = initial.status && FINAL_STATUSES.has(initial.status);
+    const pollable = !!initial.transactionId && !isFinal;
     if (!pollable) return;
+    if (deadline && Date.now() > deadline) {
+      // Already past deadline — fire one final refresh so server marks TIMEOUT.
+      void refreshStatus(true);
+      return;
+    }
     const t = setInterval(() => {
-      refreshStatus(true);
+      if (deadline && Date.now() > deadline) {
+        void refreshStatus(true);
+        clearInterval(t);
+        return;
+      }
+      void refreshStatus(true);
     }, 5000);
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initial.transactionId, initial.status]);
+  }, [initial.transactionId, initial.status, deadline]);
 
   const hasRequest = !!initial.requestedAt;
   const choiceLabel =
@@ -138,6 +164,13 @@ export default function PaymentPanel({
                 ({initial.rawStatus})
               </span>
             ) : null}
+            {remainingMs !== null && !FINAL_STATUSES.has(initial.status ?? "") ? (
+              <div className="text-[10px] mt-1 tabular-nums text-[var(--color-kobil-blue)]">
+                {expired
+                  ? "Zeitfenster abgelaufen — finalisiere…"
+                  : `Wartet auf Bürger:in · ${Math.ceil(remainingMs / 1000)}s verbleibend`}
+              </div>
+            ) : null}
             {initial.lastCheckedAt ? (
               <div className="text-[10px] text-[var(--color-kobil-navy)]/50 mt-1">
                 geprüft: {new Date(initial.lastCheckedAt).toLocaleString("de-DE")}
@@ -149,7 +182,9 @@ export default function PaymentPanel({
 
       {/* Actions */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-        {!initial.choice || initial.status === "FAILED" ? (
+        {!initial.choice ||
+        initial.status === "FAILED" ||
+        initial.status === "TIMEOUT" ? (
           <>
             <Input label="Betrag" suffix={currency}>
               <input
@@ -251,9 +286,11 @@ function PaymentStatusBadge({ status }: { status: string | null }) {
       ? { cls: "bg-emerald-50 text-emerald-700 border-emerald-200", label: "Bezahlt" }
       : status === "FAILED"
         ? { cls: "bg-rose-50 text-rose-700 border-rose-200", label: "Fehlgeschlagen" }
-        : status === "CANCELLED"
-          ? { cls: "bg-neutral-100 text-neutral-700 border-neutral-200", label: "Abgebrochen" }
-          : { cls: "bg-amber-50 text-amber-700 border-amber-200", label: status };
+        : status === "TIMEOUT"
+          ? { cls: "bg-rose-50 text-rose-700 border-rose-200", label: "Abgelaufen" }
+          : status === "CANCELLED"
+            ? { cls: "bg-neutral-100 text-neutral-700 border-neutral-200", label: "Abgebrochen" }
+            : { cls: "bg-amber-50 text-amber-700 border-amber-200", label: status };
   return (
     <span className={`text-xs rounded-full px-2.5 py-0.5 border font-medium ${cfg.cls}`}>
       {cfg.label}

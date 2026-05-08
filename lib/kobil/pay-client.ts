@@ -1,5 +1,6 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
+import { PAY_TRANSACTION_TIMEOUT_SEC } from "./payment-config";
 
 let tokenCache: { token: string; expiresAt: number } | null = null;
 
@@ -163,7 +164,7 @@ export async function createTransaction(
     merchantServiceUUID: merchantId,
     merchantName: "Terbuch",
     merchantCallback: input.callbackUrl,
-    transactionTimeout: 60,
+    transactionTimeout: PAY_TRANSACTION_TIMEOUT_SEC,
     amount: input.amountCents,
     tenantId: payTenantId(),
     currency: input.currency,
