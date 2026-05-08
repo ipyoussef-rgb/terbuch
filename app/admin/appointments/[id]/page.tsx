@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { format } from "date-fns";
 import { de } from "date-fns/locale";
 import ChatPanel from "./ChatPanel";
+import PaymentPanel from "./PaymentPanel";
 
 export const dynamic = "force-dynamic";
 
@@ -137,6 +138,14 @@ export default async function AdminAppointmentDetailPage(props: {
           </h2>
           <ChatPanel
             appointmentId={a.id}
+            disabled={a.status !== "CONFIRMED"}
+            disabledReason={
+              a.status === "PENDING"
+                ? "Chat-Komponist verfügbar sobald die Bürger:in den Termin bestätigt hat."
+                : a.status === "CANCELLED"
+                  ? "Termin wurde abgebrochen."
+                  : null
+            }
             initialMessages={a.messages.map((m) => ({
               id: m.id,
               direction: m.direction,
@@ -147,6 +156,35 @@ export default async function AdminAppointmentDetailPage(props: {
           />
         </section>
       </div>
+
+      {a.status === "CONFIRMED" ? (
+        <section className="rounded-2xl border border-[var(--color-kobil-line)] bg-white p-5 sm:p-6">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-[var(--color-kobil-navy)]/60 mb-4 flex items-center gap-2">
+            <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 text-[var(--color-kobil-blue)]" fill="none" aria-hidden="true">
+              <path
+                d="M3 8h18M3 12h18M5 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z"
+                stroke="currentColor"
+                strokeWidth="1.7"
+                strokeLinejoin="round"
+              />
+            </svg>
+            Bezahlung
+          </h2>
+          <PaymentPanel
+            appointmentId={a.id}
+            initial={{
+              amountCents: a.paymentAmountCents,
+              currency: a.paymentCurrency,
+              requestedAt: a.paymentRequestedAt?.toISOString() ?? null,
+              choice: a.paymentChoice,
+              transactionId: a.paymentTransactionId,
+              status: a.paymentStatus,
+              rawStatus: a.paymentRawStatus,
+              lastCheckedAt: a.paymentLastCheckedAt?.toISOString() ?? null,
+            }}
+          />
+        </section>
+      ) : null}
     </div>
   );
 }

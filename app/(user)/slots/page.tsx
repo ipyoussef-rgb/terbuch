@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { addDays, format, startOfDay } from "date-fns";
 import { de } from "date-fns/locale";
 import { Stepper } from "@/components/Stepper";
+import { cleanupStalePending } from "@/lib/cleanup";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +13,11 @@ export default async function SlotsPage(props: {
 }) {
   const { option, office } = await props.searchParams;
   if (!option || !office) redirect("/");
+
+  // Free up slots whose PENDING booking expired (>5 min unconfirmed).
+  await cleanupStalePending(5).catch((e) =>
+    console.warn("[cleanup] stale PENDING failed:", e),
+  );
 
   const opt = await db.serviceOption.findUnique({
     where: { id: option },

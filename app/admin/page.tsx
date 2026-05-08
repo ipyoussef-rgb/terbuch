@@ -2,10 +2,14 @@ import Link from "next/link";
 import { db } from "@/lib/db";
 import { format, startOfDay, endOfDay } from "date-fns";
 import { de } from "date-fns/locale";
+import { cleanupStalePending } from "@/lib/cleanup";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminDashboardPage() {
+  await cleanupStalePending(5).catch((e) =>
+    console.warn("[cleanup] stale PENDING failed:", e),
+  );
   const today = new Date();
   const [todays, pendingCount, confirmedCount, cancelledCount] =
     await Promise.all([

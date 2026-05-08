@@ -93,6 +93,16 @@ model Appointment {
   chatThreadId    String?
   chatInitError   String?
 
+  // Payment workflow (Sachbearbeiter triggers via /admin/api/payment-request)
+  paymentAmountCents     Int?
+  paymentCurrency        String?
+  paymentRequestedAt     DateTime?
+  paymentChoice          String?               // "online" | "onsite" | null
+  paymentTransactionId   String?
+  paymentStatus          String?               // SUCCESS | FAILED | PENDING | CANCELLED | INITIATED
+  paymentLastCheckedAt   DateTime?
+  paymentRawStatus       String?               // last raw status field from Pay API
+
   messages ChatMessage[]
 
   @@index([kobilSub])

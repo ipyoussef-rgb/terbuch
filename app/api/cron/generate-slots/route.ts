@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateSlots } from "@/lib/slots";
+import { cleanupStalePending } from "@/lib/cleanup";
+
+export const maxDuration = 60;
 
 function isAuthorized(req: NextRequest): boolean {
   // Vercel Cron sets Authorization: Bearer <CRON_SECRET>
@@ -15,8 +18,9 @@ export async function GET(req: NextRequest) {
   if (!isAuthorized(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const result = await generateSlots();
-  return NextResponse.json({ ok: true, ...result });
+  const cleanup = await cleanupStalePending();
+  const slots = await generateSlots();
+  return NextResponse.json({ ok: true, cleanup, slots });
 }
 
 export async function POST(req: NextRequest) {

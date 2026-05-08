@@ -1,9 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-
-// Vercel Hobby allows up to 60s when explicitly configured (default 10s).
-// Token + Mercury calls can take 5-10s combined.
-export const maxDuration = 60;
 import {
   ChatChoice,
   sendChoiceRequest,
@@ -15,6 +11,14 @@ import {
   confirmationText,
   greetingText,
 } from "@/lib/kobil/messages";
+import { createTransaction } from "@/lib/kobil/pay-client";
+import {
+  PAYMENT_CHOICE_ONLINE,
+  PAYMENT_CHOICE_ONSITE,
+} from "@/lib/kobil/payment-choices";
+
+// Vercel Hobby allows up to 60s when explicitly configured (default 10s).
+export const maxDuration = 60;
 
 type CallbackDto = {
   message?: {
@@ -164,6 +168,76 @@ export async function POST(req: NextRequest) {
       await sendPlainText(userId, confirmationText(summary));
     }
     return NextResponse.json({ ok: true });
+  }
+
+  // ============== Payment-choice handling (CONFIRMED appointments) =========
+  if (
+    appointment.status === "CONFIRMED" &&
+    appointment.paymentRequestedAt &&
+    !appointment.paymentChoice
+  ) {
+    if (messageText === PAYMENT_CHOICE_ONLINE) {
+      await db.appointment.update({
+        where: { id: appointment.id },
+        data: { paymentChoice: "online", paymentStatus: "INITIATED" },
+      });
+      try {
+        const callback = `${process.env.APP_BASE_URL ?? ""}/api/admin/payment-callback`;
+        const tx = await createTransaction({
+          userId: appointment.kobilSub,
+          amountCents: appointment.paymentAmountCents ?? 0,
+          currency: appointment.paymentCurrency ?? "EUR",
+          description: `Termin ${appointment.serviceOption.name}`,
+          callbackUrl: callback,
+        });
+        await db.appointment.update({
+          where: { id: appointment.id },
+          data: {
+            paymentTransactionId: tx.transactionId,
+            paymentStatus: "PENDING",
+          },
+        });
+        await sendProcessChatMessage(
+          userId,
+          "Vielen Dank! Wir starten die Online-Zahlung. Sie werden in Ihrer KOBIL Pay App weitergeleitet.",
+        );
+        await db.chatMessage.create({
+          data: {
+            appointmentId: appointment.id,
+            direction: "OUT",
+            type: "processChatMessage",
+            body: `Pay-Transaction angelegt: ${tx.transactionId}`,
+          },
+        });
+      } catch (e) {
+        console.error("[webhook] payment createTransaction failed", e);
+        const msg = e instanceof Error ? e.message : String(e);
+        await db.appointment.update({
+          where: { id: appointment.id },
+          data: {
+            paymentStatus: "FAILED",
+            paymentRawStatus: msg.slice(0, 200),
+          },
+        });
+        await sendProcessChatMessage(
+          userId,
+          "Die Online-Zahlung konnte aktuell nicht gestartet werden. Bitte zahlen Sie vor Ort.",
+        );
+      }
+      return NextResponse.json({ ok: true });
+    }
+
+    if (messageText === PAYMENT_CHOICE_ONSITE) {
+      await db.appointment.update({
+        where: { id: appointment.id },
+        data: { paymentChoice: "onsite" },
+      });
+      await sendProcessChatMessage(
+        userId,
+        "Alles klar — Sie bezahlen vor Ort. Wir sehen uns!",
+      );
+      return NextResponse.json({ ok: true });
+    }
   }
 
   if (appointment.status !== "PENDING") {

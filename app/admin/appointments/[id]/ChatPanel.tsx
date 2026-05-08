@@ -14,9 +14,13 @@ type Msg = {
 export default function ChatPanel({
   appointmentId,
   initialMessages,
+  disabled = false,
+  disabledReason,
 }: {
   appointmentId: string;
   initialMessages: Msg[];
+  disabled?: boolean;
+  disabledReason?: string | null;
 }) {
   const router = useRouter();
   const [text, setText] = useState("");
@@ -88,6 +92,11 @@ export default function ChatPanel({
         )}
       </div>
 
+      {disabled ? (
+        <div className="rounded-xl border border-[var(--color-kobil-line)] bg-[var(--color-kobil-mist-50)] px-4 py-3 text-xs text-[var(--color-kobil-navy)]/60">
+          {disabledReason ?? "Chat-Komponist deaktiviert."}
+        </div>
+      ) : (
       <div className="space-y-2">
         <div className="rounded-xl border border-[var(--color-kobil-line)] focus-within:border-[var(--color-kobil-blue)] focus-within:ring-2 focus-within:ring-[var(--color-kobil-blue)]/20 transition-colors bg-white">
           <textarea
@@ -124,6 +133,7 @@ export default function ChatPanel({
           </button>
         </div>
       </div>
+      )}
     </div>
   );
 }
