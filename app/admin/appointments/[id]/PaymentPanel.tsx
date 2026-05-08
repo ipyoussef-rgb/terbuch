@@ -65,6 +65,8 @@ export default function PaymentPanel({
     }
   }
 
+  const [authLost, setAuthLost] = useState(false);
+
   async function refreshStatus(silent = false) {
     if (!silent) setError(null);
     if (!silent) setBusy("refresh");
@@ -74,6 +76,10 @@ export default function PaymentPanel({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ appointmentId }),
       });
+      if (res.status === 401) {
+        setAuthLost(true);
+        return;
+      }
       if (!res.ok) {
         const j = (await res.json().catch(() => ({}))) as { error?: string };
         throw new Error(j.error ?? `HTTP ${res.status}`);
@@ -104,16 +110,23 @@ export default function PaymentPanel({
 
   // Auto-poll while we're waiting for a final status — until deadline.
   useEffect(() => {
+    if (authLost) return;
     const isFinal = initial.status && FINAL_STATUSES.has(initial.status);
     const pollable = !!initial.transactionId && !isFinal;
     if (!pollable) return;
-    if (deadline && Date.now() > deadline) {
-      // Already past deadline — fire one final refresh so server marks TIMEOUT.
+    // No deadline means we don't know when the transaction was created
+    // (legacy data). Fire a single refresh — server will normalize to
+    // TIMEOUT — and stop.
+    if (!deadline) {
+      void refreshStatus(true);
+      return;
+    }
+    if (Date.now() > deadline) {
       void refreshStatus(true);
       return;
     }
     const t = setInterval(() => {
-      if (deadline && Date.now() > deadline) {
+      if (Date.now() > deadline) {
         void refreshStatus(true);
         clearInterval(t);
         return;
@@ -122,7 +135,7 @@ export default function PaymentPanel({
     }, 5000);
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initial.transactionId, initial.status, deadline]);
+  }, [initial.transactionId, initial.status, deadline, authLost]);
 
   const hasRequest = !!initial.requestedAt;
   const choiceLabel =
@@ -238,6 +251,12 @@ export default function PaymentPanel({
           </button>
         )}
       </div>
+
+      {authLost ? (
+        <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+          Admin-Sitzung abgelaufen — bitte neu laden und ggf. erneut anmelden.
+        </div>
+      ) : null}
 
       {error ? (
         <div className="text-xs text-red-700">{error}</div>

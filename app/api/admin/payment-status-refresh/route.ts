@@ -58,13 +58,14 @@ export async function POST(req: NextRequest) {
   }
 
   // If we're past the Pay-API timeout window and still non-final, mark TIMEOUT.
+  // If transactionCreatedAt is missing (legacy rows from before this field
+  // existed), assume the window is long over.
   let normalized = liveStatus.normalized;
-  if (
-    !FINAL.includes(normalized) &&
-    a.paymentTransactionCreatedAt &&
-    Date.now() - a.paymentTransactionCreatedAt.getTime() > PAY_DEADLINE_MS
-  ) {
-    normalized = "TIMEOUT";
+  if (!FINAL.includes(normalized)) {
+    const startedMs = a.paymentTransactionCreatedAt?.getTime();
+    const expired =
+      startedMs == null || Date.now() - startedMs > PAY_DEADLINE_MS;
+    if (expired) normalized = "TIMEOUT";
   }
 
   await db.appointment.update({
