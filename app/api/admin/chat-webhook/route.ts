@@ -194,10 +194,15 @@ export async function POST(req: NextRequest) {
       // Persist choice synchronously so admin UI flips immediately on next refresh.
       await db.appointment.update({
         where: { id: appointment.id },
-        data: { paymentChoice: "online", paymentStatus: "INITIATED" },
+        data: {
+          paymentChoice: "online",
+          paymentStatus: "INITIATED",
+          paymentInitError: null,
+        },
       });
       // Heavy work — Pay createTransaction + getStatus + chat ack — runs after.
       after(async () => {
+        console.log(`[webhook] payment online: after() start for ${appointment.id}`);
         const callback = appUrl("/api/admin/payment-callback");
         try {
           const tx = await createTransaction({
@@ -213,6 +218,7 @@ export async function POST(req: NextRequest) {
               paymentTransactionId: tx.transactionId,
               paymentTransactionCreatedAt: new Date(),
               paymentStatus: "PENDING",
+              paymentInitError: null,
             },
           });
           // Probe live status (best-effort). Pay typically responds
@@ -260,17 +266,19 @@ export async function POST(req: NextRequest) {
             data: {
               paymentStatus: "FAILED",
               paymentRawStatus: msg.slice(0, 200),
+              paymentInitError: msg.slice(0, 1000),
             },
           });
           try {
             await sendProcessChatMessage(
               userId,
-              "Die Online-Zahlung konnte aktuell nicht gestartet werden. Bitte zahlen Sie vor Ort.",
+              "Die Online-Zahlung konnte aktuell nicht gestartet werden. Bitte zahlen Sie vor Ort oder versuchen Sie es erneut.",
             );
           } catch {
             /* ignore */
           }
         }
+        console.log(`[webhook] payment online: after() done for ${appointment.id}`);
       });
       return NextResponse.json({ ok: true });
     }

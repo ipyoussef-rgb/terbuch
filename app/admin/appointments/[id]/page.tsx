@@ -60,6 +60,17 @@ export default async function AdminAppointmentDetailPage(props: {
         </div>
       ) : null}
 
+      {a.paymentInitError ? (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+          <div className="font-semibold mb-1">
+            Pay-Init fehlgeschlagen
+          </div>
+          <pre className="whitespace-pre-wrap break-words text-xs font-mono">
+            {a.paymentInitError}
+          </pre>
+        </div>
+      ) : null}
+
       <div className="grid lg:grid-cols-2 gap-4 sm:gap-6">
         <section className="rounded-2xl border border-[var(--color-kobil-line)] bg-white p-5 sm:p-6 space-y-5">
           <div>

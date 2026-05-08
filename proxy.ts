@@ -30,6 +30,7 @@ export async function proxy(req: NextRequest) {
     pathname.startsWith("/api/admin/chat-webhook") ||
     pathname.startsWith("/api/admin/payment-callback") ||
     pathname.startsWith("/api/cron") ||
+    pathname.startsWith("/api/health") ||
     pathname === "/favicon.ico" ||
     pathname === "/datenschutz"
   ) {

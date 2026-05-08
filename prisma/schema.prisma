@@ -103,6 +103,7 @@ model Appointment {
   paymentStatus               String?          // SUCCESS | FAILED | PENDING | CANCELLED | INITIATED | TIMEOUT
   paymentLastCheckedAt        DateTime?
   paymentRawStatus            String?          // last raw status field from Pay API
+  paymentInitError            String?          // last error from createTransaction / after() callback
 
   messages ChatMessage[]
 
