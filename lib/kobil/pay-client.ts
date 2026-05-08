@@ -104,34 +104,59 @@ async function getPayToken(): Promise<string> {
   );
 }
 
-async function payFetch(path: string, init: RequestInit): Promise<unknown> {
+async function payFetchOnce(
+  path: string,
+  init: RequestInit,
+  forceFreshToken: boolean,
+): Promise<{ res: Response; text: string; url: string }> {
+  if (forceFreshToken) tokenCache = null;
   const token = await getPayToken();
   const url = `${payBase()}${path}`;
-  console.log(`[pay] ${init.method ?? "POST"} ${url}`);
-  let res: Response;
-  try {
-    res = await fetch(url, {
-      ...init,
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: "application/json",
-        "Content-Type": "application/json",
-        ...(init.headers ?? {}),
-      },
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-    });
-  } catch (e) {
-    throw new Error(`Pay fetch failed for ${url}: ${e instanceof Error ? e.message : String(e)}`);
-  }
+  console.log(`[pay] ${init.method ?? "POST"} ${url} (freshToken=${forceFreshToken})`);
+  const res = await fetch(url, {
+    ...init,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      ...(init.headers ?? {}),
+    },
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
   const text = await res.text().catch(() => "");
   console.log(`[pay] response status=${res.status} body=${text.slice(0, 500)}`);
-  if (!res.ok) {
-    throw new Error(`Pay ${res.status} ${res.statusText} at ${url}: ${text.slice(0, 500)}`);
+  return { res, text, url };
+}
+
+async function payFetch(path: string, init: RequestInit): Promise<unknown> {
+  let attempt;
+  try {
+    attempt = await payFetchOnce(path, init, false);
+  } catch (e) {
+    throw new Error(
+      `Pay fetch failed for ${payBase()}${path}: ${e instanceof Error ? e.message : String(e)}`,
+    );
+  }
+  // 401 = token rejected. Wipe cache and retry once with a fresh token.
+  if (attempt.res.status === 401) {
+    console.warn("[pay] 401 — invalidating token cache and retrying once");
+    try {
+      attempt = await payFetchOnce(path, init, true);
+    } catch (e) {
+      throw new Error(
+        `Pay retry-fetch failed for ${attempt.url}: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+  }
+  if (!attempt.res.ok) {
+    throw new Error(
+      `Pay ${attempt.res.status} ${attempt.res.statusText} at ${attempt.url}: ${attempt.text.slice(0, 500)}`,
+    );
   }
   try {
-    return text ? JSON.parse(text) : {};
+    return attempt.text ? JSON.parse(attempt.text) : {};
   } catch {
-    return { raw: text };
+    return { raw: attempt.text };
   }
 }
 

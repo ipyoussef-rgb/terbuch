@@ -150,63 +150,78 @@ type OutboundContent = {
   messageContent: Record<string, unknown>;
 };
 
-async function send(userId: string, content: OutboundContent): Promise<unknown> {
+async function mercuryFetchOnce(
+  url: string,
+  bodyJson: string,
+  messageType: string,
+  forceFreshToken: boolean,
+): Promise<{ res: Response; text: string }> {
+  if (forceFreshToken) tokenCache = null;
   const token = await getChatToken();
-  const svc = serviceUuid();
-  const path = sendPathTemplate()
-    .replace("{realm}", encodeURIComponent(realm()))
-    .replace("{serviceUuid}", encodeURIComponent(svc))
-    .replace("{userId}", encodeURIComponent(userId));
-  const url = `${base()}${path}`;
-
-  const body = {
-    serviceUuid: svc,
-    version: 3,
-    ...content,
-  };
-  const bodyJson = JSON.stringify(body);
-
   console.log(
-    `[mercury] POST ${url}\n` +
-      `        body=${bodyJson}`,
+    `[mercury] POST ${url} (type=${messageType}, freshToken=${forceFreshToken})`,
   );
-
-  let res: Response;
-  try {
-    res = await fetch(url, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      body: bodyJson,
-    });
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    throw new Error(`Mercury fetch failed for ${url}: ${msg}`);
-  }
-
-  const respText = await res.text().catch(() => "");
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: bodyJson,
+  });
+  const text = await res.text().catch(() => "");
   const reqId =
     res.headers.get("x-request-id") ??
     res.headers.get("x-correlation-id") ??
     res.headers.get("traceparent") ??
     "—";
   console.log(
-    `[mercury] response status=${res.status} ${res.statusText} reqId=${reqId} body=${respText.slice(0, 500)}`,
+    `[mercury] response status=${res.status} ${res.statusText} reqId=${reqId} body=${text.slice(0, 500)}`,
   );
+  return { res, text };
+}
 
-  if (!res.ok) {
+async function send(userId: string, content: OutboundContent): Promise<unknown> {
+  const svc = serviceUuid();
+  const path = sendPathTemplate()
+    .replace("{realm}", encodeURIComponent(realm()))
+    .replace("{serviceUuid}", encodeURIComponent(svc))
+    .replace("{userId}", encodeURIComponent(userId));
+  const url = `${base()}${path}`;
+  const body = { serviceUuid: svc, version: 3, ...content };
+  const bodyJson = JSON.stringify(body);
+
+  let attempt;
+  try {
+    attempt = await mercuryFetchOnce(url, bodyJson, content.messageType, false);
+  } catch (e) {
     throw new Error(
-      `Mercury ${res.status} ${res.statusText} at ${url}: ${respText.slice(0, 500)}`,
+      `Mercury fetch failed for ${url}: ${e instanceof Error ? e.message : String(e)}`,
+    );
+  }
+
+  if (attempt.res.status === 401) {
+    console.warn("[mercury] 401 — invalidating token cache and retrying once");
+    try {
+      attempt = await mercuryFetchOnce(url, bodyJson, content.messageType, true);
+    } catch (e) {
+      throw new Error(
+        `Mercury retry-fetch failed for ${url}: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+  }
+
+  if (!attempt.res.ok) {
+    throw new Error(
+      `Mercury ${attempt.res.status} ${attempt.res.statusText} at ${url}: ${attempt.text.slice(0, 500)}`,
     );
   }
 
   try {
-    return respText ? JSON.parse(respText) : {};
+    return attempt.text ? JSON.parse(attempt.text) : {};
   } catch {
-    return { raw: respText };
+    return { raw: attempt.text };
   }
 }
 
