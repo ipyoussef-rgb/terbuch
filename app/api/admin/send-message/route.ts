@@ -1,10 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
-
-export const maxDuration = 60;
 import { getSession } from "@/lib/auth/session";
 import { sendPlainText } from "@/lib/kobil/chat-client";
+
+export const maxDuration = 60;
 
 const Body = z.object({
   appointmentId: z.string().min(1),
@@ -30,16 +30,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  try {
-    await sendPlainText(a.email, parsed.data.text);
-  } catch (e) {
-    console.error("[admin send] failed", e);
-    return NextResponse.json(
-      { error: "Mercury delivery failed" },
-      { status: 502 },
-    );
-  }
-
+  // Persist immediately so the chat history shows the sent message at once.
   await db.chatMessage.create({
     data: {
       appointmentId: a.id,
@@ -47,6 +38,15 @@ export async function POST(req: NextRequest) {
       type: "plainText",
       body: parsed.data.text,
     },
+  });
+
+  // Mercury call runs after the response.
+  after(async () => {
+    try {
+      await sendPlainText(a.email, parsed.data.text);
+    } catch (e) {
+      console.error("[admin send] failed", e);
+    }
   });
 
   return NextResponse.json({ ok: true });

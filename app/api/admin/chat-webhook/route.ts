@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { db } from "@/lib/db";
 import {
   ChatChoice,
@@ -149,101 +149,120 @@ export async function POST(req: NextRequest) {
     },
   });
 
+  // ====================== INIT ========================
   if (messageType === "init") {
     if (appointment.status === "PENDING") {
       const combined = `${greetingText(summary)}\n\nTermin bestätigen?`;
-      await sendChoiceRequest(userId, combined, [
-        ChatChoice.CONFIRM,
-        ChatChoice.CANCEL,
-      ]);
-      await db.chatMessage.create({
-        data: {
-          appointmentId: appointment.id,
-          direction: "OUT",
-          type: "choiceRequest",
-          body: combined,
-        },
+      after(async () => {
+        try {
+          await sendChoiceRequest(userId, combined, [
+            ChatChoice.CONFIRM,
+            ChatChoice.CANCEL,
+          ]);
+          await db.chatMessage.create({
+            data: {
+              appointmentId: appointment.id,
+              direction: "OUT",
+              type: "choiceRequest",
+              body: combined,
+            },
+          });
+        } catch (e) {
+          console.error("[webhook] init->choiceRequest failed", e);
+        }
       });
     } else if (appointment.status === "CONFIRMED") {
-      await sendPlainText(userId, confirmationText(summary));
+      after(async () => {
+        try {
+          await sendPlainText(userId, confirmationText(summary));
+        } catch (e) {
+          console.error("[webhook] init->confirmation failed", e);
+        }
+      });
     }
     return NextResponse.json({ ok: true });
   }
 
-  // ============== Payment-choice handling (CONFIRMED appointments) =========
+  // ============== PAYMENT (CONFIRMED + outstanding payment request) =========
   if (
     appointment.status === "CONFIRMED" &&
     appointment.paymentRequestedAt &&
     !appointment.paymentChoice
   ) {
     if (messageText === PAYMENT_CHOICE_ONLINE) {
+      // Persist choice synchronously so admin UI flips immediately on next refresh.
       await db.appointment.update({
         where: { id: appointment.id },
         data: { paymentChoice: "online", paymentStatus: "INITIATED" },
       });
-      try {
+      // Heavy work — Pay createTransaction + getStatus + chat ack — runs after.
+      after(async () => {
         const callback = `${process.env.APP_BASE_URL ?? ""}/api/admin/payment-callback`;
-        const tx = await createTransaction({
-          userId: appointment.kobilSub,
-          amountCents: appointment.paymentAmountCents ?? 0,
-          currency: appointment.paymentCurrency ?? "EUR",
-          description: `Termin ${appointment.serviceOption.name}`,
-          callbackUrl: callback,
-        });
-        await db.appointment.update({
-          where: { id: appointment.id },
-          data: {
-            paymentTransactionId: tx.transactionId,
-            paymentTransactionCreatedAt: new Date(),
-            paymentStatus: "PENDING",
-          },
-        });
-
-        // Immediately probe the live status so the admin UI shows it.
         try {
-          const status = await getTransactionStatus(tx.transactionId, callback);
+          const tx = await createTransaction({
+            userId: appointment.kobilSub,
+            amountCents: appointment.paymentAmountCents ?? 0,
+            currency: appointment.paymentCurrency ?? "EUR",
+            description: `Termin ${appointment.serviceOption.name}`,
+            callbackUrl: callback,
+          });
           await db.appointment.update({
             where: { id: appointment.id },
             data: {
-              paymentStatus: status.normalized,
-              paymentRawStatus: status.rawStatus ?? null,
-              paymentLastCheckedAt: new Date(),
+              paymentTransactionId: tx.transactionId,
+              paymentTransactionCreatedAt: new Date(),
+              paymentStatus: "PENDING",
             },
           });
-          console.log(
-            `[webhook] post-create status: normalized=${status.normalized} raw=${status.rawStatus}`,
+          // Probe live status (best-effort).
+          try {
+            const status = await getTransactionStatus(tx.transactionId, callback);
+            await db.appointment.update({
+              where: { id: appointment.id },
+              data: {
+                paymentStatus: status.normalized,
+                paymentRawStatus: status.rawStatus ?? null,
+                paymentLastCheckedAt: new Date(),
+              },
+            });
+            console.log(
+              `[webhook] post-create status: normalized=${status.normalized} raw=${status.rawStatus}`,
+            );
+          } catch (e) {
+            console.warn("[webhook] post-create getStatus failed", e);
+          }
+          await sendProcessChatMessage(
+            userId,
+            "Vielen Dank! Wir starten die Online-Zahlung. Sie werden in Ihrer KOBIL Pay App weitergeleitet.",
           );
+          await db.chatMessage.create({
+            data: {
+              appointmentId: appointment.id,
+              direction: "OUT",
+              type: "processChatMessage",
+              body: `Pay-Transaction angelegt: ${tx.transactionId}`,
+            },
+          });
         } catch (e) {
-          console.warn("[webhook] post-create getStatus failed", e);
+          console.error("[webhook] payment createTransaction failed", e);
+          const msg = e instanceof Error ? e.message : String(e);
+          await db.appointment.update({
+            where: { id: appointment.id },
+            data: {
+              paymentStatus: "FAILED",
+              paymentRawStatus: msg.slice(0, 200),
+            },
+          });
+          try {
+            await sendProcessChatMessage(
+              userId,
+              "Die Online-Zahlung konnte aktuell nicht gestartet werden. Bitte zahlen Sie vor Ort.",
+            );
+          } catch {
+            /* ignore */
+          }
         }
-
-        await sendProcessChatMessage(
-          userId,
-          "Vielen Dank! Wir starten die Online-Zahlung. Sie werden in Ihrer KOBIL Pay App weitergeleitet.",
-        );
-        await db.chatMessage.create({
-          data: {
-            appointmentId: appointment.id,
-            direction: "OUT",
-            type: "processChatMessage",
-            body: `Pay-Transaction angelegt: ${tx.transactionId}`,
-          },
-        });
-      } catch (e) {
-        console.error("[webhook] payment createTransaction failed", e);
-        const msg = e instanceof Error ? e.message : String(e);
-        await db.appointment.update({
-          where: { id: appointment.id },
-          data: {
-            paymentStatus: "FAILED",
-            paymentRawStatus: msg.slice(0, 200),
-          },
-        });
-        await sendProcessChatMessage(
-          userId,
-          "Die Online-Zahlung konnte aktuell nicht gestartet werden. Bitte zahlen Sie vor Ort.",
-        );
-      }
+      });
       return NextResponse.json({ ok: true });
     }
 
@@ -252,10 +271,16 @@ export async function POST(req: NextRequest) {
         where: { id: appointment.id },
         data: { paymentChoice: "onsite" },
       });
-      await sendProcessChatMessage(
-        userId,
-        "Alles klar — Sie bezahlen vor Ort. Wir sehen uns!",
-      );
+      after(async () => {
+        try {
+          await sendProcessChatMessage(
+            userId,
+            "Alles klar — Sie bezahlen vor Ort. Wir sehen uns!",
+          );
+        } catch (e) {
+          console.error("[webhook] onsite ack failed", e);
+        }
+      });
       return NextResponse.json({ ok: true });
     }
   }
@@ -264,6 +289,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
+  // ============== CONFIRM / CANCEL booking =================================
   if (messageText === ChatChoice.CONFIRM) {
     await db.$transaction([
       db.appointment.update({
@@ -275,14 +301,20 @@ export async function POST(req: NextRequest) {
         data: { status: "BOOKED" },
       }),
     ]);
-    await sendProcessChatMessage(userId, confirmationText(summary));
-    await db.chatMessage.create({
-      data: {
-        appointmentId: appointment.id,
-        direction: "OUT",
-        type: "processChatMessage",
-        body: confirmationText(summary),
-      },
+    after(async () => {
+      try {
+        await sendProcessChatMessage(userId, confirmationText(summary));
+        await db.chatMessage.create({
+          data: {
+            appointmentId: appointment.id,
+            direction: "OUT",
+            type: "processChatMessage",
+            body: confirmationText(summary),
+          },
+        });
+      } catch (e) {
+        console.error("[webhook] confirm ack failed", e);
+      }
     });
   } else if (messageText === ChatChoice.CANCEL) {
     await db.$transaction([
@@ -295,20 +327,32 @@ export async function POST(req: NextRequest) {
         data: { status: "FREE" },
       }),
     ]);
-    await sendProcessChatMessage(userId, cancellationText());
-    await db.chatMessage.create({
-      data: {
-        appointmentId: appointment.id,
-        direction: "OUT",
-        type: "processChatMessage",
-        body: cancellationText(),
-      },
+    after(async () => {
+      try {
+        await sendProcessChatMessage(userId, cancellationText());
+        await db.chatMessage.create({
+          data: {
+            appointmentId: appointment.id,
+            direction: "OUT",
+            type: "processChatMessage",
+            body: cancellationText(),
+          },
+        });
+      } catch (e) {
+        console.error("[webhook] cancel ack failed", e);
+      }
     });
   } else {
-    await sendChoiceRequest(userId, "Bitte wählen Sie eine Option:", [
-      ChatChoice.CONFIRM,
-      ChatChoice.CANCEL,
-    ]);
+    after(async () => {
+      try {
+        await sendChoiceRequest(userId, "Bitte wählen Sie eine Option:", [
+          ChatChoice.CONFIRM,
+          ChatChoice.CANCEL,
+        ]);
+      } catch (e) {
+        console.error("[webhook] reminder choiceRequest failed", e);
+      }
+    });
   }
 
   return NextResponse.json({ ok: true });

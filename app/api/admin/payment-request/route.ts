@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { getSession } from "@/lib/auth/session";
@@ -47,19 +47,7 @@ export async function POST(req: NextRequest) {
     `${major} ${currency} (${description}) an.\n\n` +
     `Möchten Sie direkt online bezahlen oder vor Ort?`;
 
-  try {
-    await sendChoiceRequest(a.email, text, [
-      PAYMENT_CHOICE_ONLINE,
-      PAYMENT_CHOICE_ONSITE,
-    ]);
-  } catch (e) {
-    console.error("[payment-request] chat send failed", e);
-    return NextResponse.json(
-      { error: "Mercury delivery failed" },
-      { status: 502 },
-    );
-  }
-
+  // Persist sync so admin UI flips immediately on refresh.
   await db.appointment.update({
     where: { id: a.id },
     data: {
@@ -69,18 +57,30 @@ export async function POST(req: NextRequest) {
       paymentStatus: null,
       paymentChoice: null,
       paymentTransactionId: null,
+      paymentTransactionCreatedAt: null,
       paymentRawStatus: null,
       paymentLastCheckedAt: null,
     },
   });
 
-  await db.chatMessage.create({
-    data: {
-      appointmentId: a.id,
-      direction: "OUT",
-      type: "choiceRequest",
-      body: text,
-    },
+  // Mercury call after the response.
+  after(async () => {
+    try {
+      await sendChoiceRequest(a.email, text, [
+        PAYMENT_CHOICE_ONLINE,
+        PAYMENT_CHOICE_ONSITE,
+      ]);
+      await db.chatMessage.create({
+        data: {
+          appointmentId: a.id,
+          direction: "OUT",
+          type: "choiceRequest",
+          body: text,
+        },
+      });
+    } catch (e) {
+      console.error("[payment-request] chat send failed", e);
+    }
   });
 
   return NextResponse.json({ ok: true });
