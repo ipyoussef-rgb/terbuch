@@ -28,6 +28,7 @@ export async function proxy(req: NextRequest) {
     pathname.startsWith("/_next") ||
     pathname.startsWith("/api/auth") ||
     pathname.startsWith("/api/admin/chat-webhook") ||
+    pathname.startsWith("/api/admin/payment-callback") ||
     pathname.startsWith("/api/cron") ||
     pathname === "/favicon.ico" ||
     pathname === "/datenschutz"
