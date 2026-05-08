@@ -58,10 +58,19 @@ export async function POST(req: NextRequest) {
     liveStatus = { normalized: a.paymentStatus ?? "UNKNOWN" };
   }
 
-  // If we're past the Pay-API timeout window and still non-final, mark TIMEOUT.
-  // If transactionCreatedAt is missing (legacy rows from before this field
-  // existed), assume the window is long over.
-  let normalized = liveStatus.normalized;
+  // Pay's /status endpoint typically returns "inquiring status" — only the
+  // merchantCallback push gives us SUCCESS/FAILED/CANCELLED. So:
+  //   - if Pay returned a final status, take it
+  //   - if Pay returned UNKNOWN, keep whatever we already had
+  //   - else keep current and just bump lastCheckedAt
+  let normalized = a.paymentStatus ?? "PENDING";
+  if (FINAL.includes(liveStatus.normalized)) {
+    normalized = liveStatus.normalized;
+  } else if (liveStatus.normalized !== "UNKNOWN") {
+    normalized = liveStatus.normalized;
+  }
+
+  // After the Pay timeout window has passed without a final status, mark TIMEOUT.
   if (!FINAL.includes(normalized)) {
     const startedMs = a.paymentTransactionCreatedAt?.getTime();
     const expired =

@@ -109,19 +109,21 @@ export default function PaymentPanel({
   const expired = deadline ? now > deadline : false;
 
   // Auto-poll while we're waiting for a final status — until deadline.
+  // The merchantCallback writes the final status into our DB. We don't need
+  // to hit Pay's status endpoint every tick; just re-fetch the page so the
+  // server-side DB read picks up the new state.
   useEffect(() => {
     if (authLost) return;
     const isFinal = initial.status && FINAL_STATUSES.has(initial.status);
     const pollable = !!initial.transactionId && !isFinal;
     if (!pollable) return;
-    // No deadline means we don't know when the transaction was created
-    // (legacy data). Fire a single refresh — server will normalize to
-    // TIMEOUT — and stop.
     if (!deadline) {
+      // No deadline (legacy row) → ask server to finalize once.
       void refreshStatus(true);
       return;
     }
     if (Date.now() > deadline) {
+      // Past deadline → server will mark TIMEOUT.
       void refreshStatus(true);
       return;
     }
@@ -131,8 +133,10 @@ export default function PaymentPanel({
         clearInterval(t);
         return;
       }
-      void refreshStatus(true);
-    }, 5000);
+      // Cheap: just re-render the server component, which re-reads the
+      // appointment row that the merchantCallback may have updated.
+      router.refresh();
+    }, 3000);
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initial.transactionId, initial.status, deadline, authLost]);

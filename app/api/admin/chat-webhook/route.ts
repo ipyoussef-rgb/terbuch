@@ -215,17 +215,25 @@ export async function POST(req: NextRequest) {
               paymentStatus: "PENDING",
             },
           });
-          // Probe live status (best-effort).
+          // Probe live status (best-effort). Pay typically responds
+          // "inquiring status" here — the real result comes via callback.
+          // Don't downgrade an already-stored final status.
           try {
             const status = await getTransactionStatus(tx.transactionId, callback);
-            await db.appointment.update({
-              where: { id: appointment.id },
-              data: {
-                paymentStatus: status.normalized,
-                paymentRawStatus: status.rawStatus ?? null,
-                paymentLastCheckedAt: new Date(),
-              },
-            });
+            const FINAL = ["SUCCESS", "FAILED", "CANCELLED", "TIMEOUT"];
+            if (
+              status.normalized !== "UNKNOWN" &&
+              !FINAL.includes("PENDING") // always update from PENDING
+            ) {
+              await db.appointment.update({
+                where: { id: appointment.id },
+                data: {
+                  paymentStatus: status.normalized,
+                  paymentRawStatus: status.rawStatus ?? null,
+                  paymentLastCheckedAt: new Date(),
+                },
+              });
+            }
             console.log(
               `[webhook] post-create status: normalized=${status.normalized} raw=${status.rawStatus}`,
             );

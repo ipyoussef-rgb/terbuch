@@ -244,7 +244,16 @@ function normalize(s: string | undefined): StatusResult["normalized"] {
   if (u.includes("FAIL") || u.includes("ERROR") || u.includes("REJECT")) return "FAILED";
   if (u.includes("CANCEL") || u.includes("VOID")) return "CANCELLED";
   if (u.includes("INIT")) return "INITIATED";
-  if (u.includes("PEND") || u.includes("PROCESS") || u.includes("WAIT")) return "PENDING";
+  // "INQUIR" covers Pay's "inquiring status" / "Inquire status in progress"
+  // ack response — it's effectively still pending while we wait for the
+  // merchantCallback push.
+  if (
+    u.includes("INQUIR") ||
+    u.includes("PEND") ||
+    u.includes("PROCESS") ||
+    u.includes("WAIT")
+  )
+    return "PENDING";
   return "UNKNOWN";
 }
 

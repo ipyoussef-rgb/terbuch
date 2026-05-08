@@ -124,7 +124,12 @@ function normalize(
   if (u.includes("CANCEL") || u.includes("VOID")) return "CANCELLED";
   if (u.includes("TIMEOUT") || u.includes("EXPIRE")) return "TIMEOUT";
   if (u.includes("INIT")) return "INITIATED";
-  if (u.includes("PEND") || u.includes("PROCESS") || u.includes("WAIT"))
+  if (
+    u.includes("INQUIR") ||
+    u.includes("PEND") ||
+    u.includes("PROCESS") ||
+    u.includes("WAIT")
+  )
     return "PENDING";
   return "UNKNOWN";
 }
