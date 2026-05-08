@@ -163,7 +163,7 @@ export async function createTransaction(
     merchantServiceUUID: merchantId,
     merchantName: "Terbuch",
     merchantCallback: input.callbackUrl,
-    transactionTimeout: 600,
+    transactionTimeout: 60,
     amount: input.amountCents,
     tenantId: payTenantId(),
     currency: input.currency,

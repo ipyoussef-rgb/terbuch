@@ -133,7 +133,7 @@ export default function PaymentPanel({
 
       {/* Actions */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-        {!initial.choice ? (
+        {!initial.choice || initial.status === "FAILED" ? (
           <>
             <Input label="Betrag" suffix={currency}>
               <input
