@@ -240,13 +240,20 @@ export async function getTransactionStatus(
 function normalize(s: string | undefined): StatusResult["normalized"] {
   if (!s) return "UNKNOWN";
   const u = s.toUpperCase();
-  if (u.includes("SUCCESS") || u.includes("COMPLETED") || u.includes("PAID")) return "SUCCESS";
-  if (u.includes("FAIL") || u.includes("ERROR") || u.includes("REJECT")) return "FAILED";
-  if (u.includes("CANCEL") || u.includes("VOID")) return "CANCELLED";
+  // Pay callback sends `status: "finished"` and `message: "Payment complete."`
+  // for the success case — both must map to SUCCESS.
+  if (
+    u.includes("SUCCESS") ||
+    u.includes("COMPLETE") ||
+    u.includes("FINISH") ||
+    u.includes("PAID") ||
+    u.includes("DONE")
+  )
+    return "SUCCESS";
+  if (u.includes("FAIL") || u.includes("ERROR") || u.includes("REJECT") || u.includes("DECLIN"))
+    return "FAILED";
+  if (u.includes("CANCEL") || u.includes("VOID") || u.includes("ABORT")) return "CANCELLED";
   if (u.includes("INIT")) return "INITIATED";
-  // "INQUIR" covers Pay's "inquiring status" / "Inquire status in progress"
-  // ack response — it's effectively still pending while we wait for the
-  // merchantCallback push.
   if (
     u.includes("INQUIR") ||
     u.includes("PEND") ||

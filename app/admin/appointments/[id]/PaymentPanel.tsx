@@ -98,15 +98,8 @@ export default function PaymentPanel({
     return new Date(initial.transactionCreatedAt).getTime() + PAY_DEADLINE_MS;
   }, [initial.transactionCreatedAt]);
 
-  // Live countdown for the UI.
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
-  }, []);
-
-  const remainingMs = deadline ? Math.max(0, deadline - now) : null;
-  const expired = deadline ? now > deadline : false;
+  // (Countdown UI was removed — admin uses "Status aktualisieren" or the
+  // silent router.refresh() picks up the merchantCallback push automatically.)
 
   // Auto-poll while we're waiting for a final status — until deadline.
   // The merchantCallback writes the final status into our DB. We don't need
@@ -180,13 +173,6 @@ export default function PaymentPanel({
               <span className="ml-2 text-[10px] text-[var(--color-kobil-navy)]/50">
                 ({initial.rawStatus})
               </span>
-            ) : null}
-            {remainingMs !== null && !FINAL_STATUSES.has(initial.status ?? "") ? (
-              <div className="text-[10px] mt-1 tabular-nums text-[var(--color-kobil-blue)]">
-                {expired
-                  ? "Zeitfenster abgelaufen — finalisiere…"
-                  : `Wartet auf Bürger:in · ${Math.ceil(remainingMs / 1000)}s verbleibend`}
-              </div>
             ) : null}
             {initial.lastCheckedAt ? (
               <div className="text-[10px] text-[var(--color-kobil-navy)]/50 mt-1">

@@ -117,11 +117,24 @@ function normalize(
   | "TIMEOUT"
   | "UNKNOWN" {
   const u = s.toUpperCase();
-  if (u.includes("SUCCESS") || u.includes("COMPLETED") || u.includes("PAID"))
+  // Pay sends "finished" / "Payment complete." for the success case.
+  if (
+    u.includes("SUCCESS") ||
+    u.includes("COMPLETE") ||
+    u.includes("FINISH") ||
+    u.includes("PAID") ||
+    u.includes("DONE")
+  )
     return "SUCCESS";
-  if (u.includes("FAIL") || u.includes("ERROR") || u.includes("REJECT"))
+  if (
+    u.includes("FAIL") ||
+    u.includes("ERROR") ||
+    u.includes("REJECT") ||
+    u.includes("DECLIN")
+  )
     return "FAILED";
-  if (u.includes("CANCEL") || u.includes("VOID")) return "CANCELLED";
+  if (u.includes("CANCEL") || u.includes("VOID") || u.includes("ABORT"))
+    return "CANCELLED";
   if (u.includes("TIMEOUT") || u.includes("EXPIRE")) return "TIMEOUT";
   if (u.includes("INIT")) return "INITIATED";
   if (
