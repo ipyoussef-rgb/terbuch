@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 type Initial = {
@@ -61,9 +61,9 @@ export default function PaymentPanel({
     }
   }
 
-  async function refreshStatus() {
-    setError(null);
-    setBusy("refresh");
+  async function refreshStatus(silent = false) {
+    if (!silent) setError(null);
+    if (!silent) setBusy("refresh");
     try {
       const res = await fetch("/api/admin/payment-status-refresh", {
         method: "POST",
@@ -76,11 +76,27 @@ export default function PaymentPanel({
       }
       router.refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Fehler");
+      if (!silent) setError(e instanceof Error ? e.message : "Fehler");
     } finally {
-      setBusy(null);
+      if (!silent) setBusy(null);
     }
   }
+
+  // Auto-poll while we're waiting for a final status.
+  useEffect(() => {
+    const pollable =
+      !!initial.transactionId &&
+      (initial.status === "PENDING" ||
+        initial.status === "INITIATED" ||
+        initial.status === "UNKNOWN" ||
+        initial.status === null);
+    if (!pollable) return;
+    const t = setInterval(() => {
+      refreshStatus(true);
+    }, 5000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initial.transactionId, initial.status]);
 
   const hasRequest = !!initial.requestedAt;
   const choiceLabel =
@@ -179,7 +195,7 @@ export default function PaymentPanel({
         ) : (
           <button
             type="button"
-            onClick={refreshStatus}
+            onClick={() => refreshStatus()}
             disabled={busy === "refresh" || !initial.transactionId}
             className="rounded-full border border-[var(--color-kobil-line)] px-4 py-2 text-sm font-medium hover:border-[var(--color-kobil-blue)] hover:text-[var(--color-kobil-blue)] disabled:opacity-50"
           >

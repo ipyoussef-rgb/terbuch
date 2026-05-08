@@ -11,7 +11,7 @@ import {
   confirmationText,
   greetingText,
 } from "@/lib/kobil/messages";
-import { createTransaction } from "@/lib/kobil/pay-client";
+import { createTransaction, getTransactionStatus } from "@/lib/kobil/pay-client";
 import {
   PAYMENT_CHOICE_ONLINE,
   PAYMENT_CHOICE_ONSITE,
@@ -197,6 +197,25 @@ export async function POST(req: NextRequest) {
             paymentStatus: "PENDING",
           },
         });
+
+        // Immediately probe the live status so the admin UI shows it.
+        try {
+          const status = await getTransactionStatus(tx.transactionId, callback);
+          await db.appointment.update({
+            where: { id: appointment.id },
+            data: {
+              paymentStatus: status.normalized,
+              paymentRawStatus: status.rawStatus ?? null,
+              paymentLastCheckedAt: new Date(),
+            },
+          });
+          console.log(
+            `[webhook] post-create status: normalized=${status.normalized} raw=${status.rawStatus}`,
+          );
+        } catch (e) {
+          console.warn("[webhook] post-create getStatus failed", e);
+        }
+
         await sendProcessChatMessage(
           userId,
           "Vielen Dank! Wir starten die Online-Zahlung. Sie werden in Ihrer KOBIL Pay App weitergeleitet.",
