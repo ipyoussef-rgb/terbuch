@@ -1,9 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
 
 // Allow longer execution: client_credentials + 2 Mercury POSTs can cumulatively
-// exceed Vercel's default 10s.
+// exceed Vercel's default 10s. `after()` continues running until this limit.
 export const maxDuration = 60;
 import { getSession } from "@/lib/auth/session";
 import {
@@ -88,19 +88,24 @@ export async function POST(req: NextRequest) {
     throw e;
   });
 
-  // Fire-and-forget chat init: don't block the booking response on chat errors,
-  // but capture the error on the appointment so it shows up in the admin UI.
-  void initChat(appointment.id).catch(async (err) => {
-    const msg = err instanceof Error ? `${err.message}` : String(err);
-    console.error(`[chat init] FAILED for appointment ${appointment.id}:`, msg);
-    if (err instanceof Error && err.stack) console.error(err.stack);
+  // Send the chat after the response goes back to the user.
+  // `after()` keeps the function alive on Vercel until maxDuration, unlike
+  // a bare `void promise` which can be killed the moment we return.
+  after(async () => {
     try {
-      await db.appointment.update({
-        where: { id: appointment.id },
-        data: { chatInitError: msg.slice(0, 1000) },
-      });
-    } catch (e) {
-      console.error("[chat init] could not persist error:", e);
+      await initChat(appointment.id);
+    } catch (err) {
+      const msg = err instanceof Error ? `${err.message}` : String(err);
+      console.error(`[chat init] FAILED for appointment ${appointment.id}:`, msg);
+      if (err instanceof Error && err.stack) console.error(err.stack);
+      try {
+        await db.appointment.update({
+          where: { id: appointment.id },
+          data: { chatInitError: msg.slice(0, 1000) },
+        });
+      } catch (e) {
+        console.error("[chat init] could not persist error:", e);
+      }
     }
   });
 
