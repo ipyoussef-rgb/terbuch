@@ -52,10 +52,10 @@ model Slot {
   office      Office       @relation(fields: [officeId], references: [id], onDelete: Cascade)
   serviceId   String
   service     Service      @relation(fields: [serviceId], references: [id], onDelete: Cascade)
-  startsAt    DateTime
-  endsAt      DateTime
-  status      SlotStatus   @default(FREE)
-  appointment Appointment?
+  startsAt     DateTime
+  endsAt       DateTime
+  status       SlotStatus    @default(FREE)
+  appointments Appointment[]
 
   @@unique([officeId, serviceId, startsAt])
   @@index([officeId, serviceId, startsAt])
@@ -70,7 +70,7 @@ enum AppointmentStatus {
 
 model Appointment {
   id              String            @id @default(cuid())
-  slotId          String            @unique
+  slotId          String
   slot            Slot              @relation(fields: [slotId], references: [id], onDelete: Cascade)
   serviceOptionId String
   serviceOption   ServiceOption     @relation(fields: [serviceOptionId], references: [id])
@@ -106,6 +106,8 @@ model Appointment {
   messages ChatMessage[]
 
   @@index([kobilSub])
+  @@index([email])
+  @@index([slotId])
   @@index([status])
   @@index([createdAt])
 }
