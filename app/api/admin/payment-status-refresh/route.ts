@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { getSession } from "@/lib/auth/session";
 import { getTransactionStatus } from "@/lib/kobil/pay-client";
 import { PAY_DEADLINE_MS } from "@/lib/kobil/payment-config";
+import { appUrl } from "@/lib/app-url";
 
 export const maxDuration = 60;
 
@@ -37,7 +38,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const callback = `${process.env.APP_BASE_URL ?? ""}/api/admin/payment-callback`;
+  const callback = appUrl("/api/admin/payment-callback");
 
   // Already in a final state? Skip the round-trip.
   const FINAL = ["SUCCESS", "FAILED", "CANCELLED", "TIMEOUT"];

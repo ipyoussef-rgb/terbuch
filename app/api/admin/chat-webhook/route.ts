@@ -16,6 +16,7 @@ import {
   PAYMENT_CHOICE_ONLINE,
   PAYMENT_CHOICE_ONSITE,
 } from "@/lib/kobil/payment-choices";
+import { appUrl } from "@/lib/app-url";
 
 // Vercel Hobby allows up to 60s when explicitly configured (default 10s).
 export const maxDuration = 60;
@@ -197,7 +198,7 @@ export async function POST(req: NextRequest) {
       });
       // Heavy work — Pay createTransaction + getStatus + chat ack — runs after.
       after(async () => {
-        const callback = `${process.env.APP_BASE_URL ?? ""}/api/admin/payment-callback`;
+        const callback = appUrl("/api/admin/payment-callback");
         try {
           const tx = await createTransaction({
             userId: appointment.kobilSub,
