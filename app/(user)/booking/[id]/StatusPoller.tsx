@@ -22,7 +22,7 @@ export default function StatusPoller({
       } catch {
         // ignore
       }
-    }, 5000);
+    }, 2000);
     return () => clearInterval(t);
   }, [appointmentId, initialStatus, router]);
   return null;

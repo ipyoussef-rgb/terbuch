@@ -143,19 +143,11 @@ async function initChat(appointmentId: string): Promise<void> {
     firstName: a.firstName,
   };
 
-  console.log(`[chat init] step 1/2: sendPlainText`);
-  await sendPlainText(recipient, greetingText(summary));
-  await db.chatMessage.create({
-    data: {
-      appointmentId: a.id,
-      direction: "OUT",
-      type: "plainText",
-      body: greetingText(summary),
-    },
-  });
-
-  console.log(`[chat init] step 2/2: sendChoiceRequest`);
-  await sendChoiceRequest(recipient, "Termin bestätigen?", [
+  // Single combined message (greeting text + buttons) — fewer round-trips
+  // and less for the user's KOBIL Chat to refresh when they reopen it.
+  const combined = `${greetingText(summary)}\n\nTermin bestätigen?`;
+  console.log(`[chat init] sendChoiceRequest (combined)`);
+  await sendChoiceRequest(recipient, combined, [
     ChatChoice.CONFIRM,
     ChatChoice.CANCEL,
   ]);
@@ -164,7 +156,7 @@ async function initChat(appointmentId: string): Promise<void> {
       appointmentId: a.id,
       direction: "OUT",
       type: "choiceRequest",
-      body: `${ChatChoice.CONFIRM} | ${ChatChoice.CANCEL}`,
+      body: combined,
     },
   });
 

@@ -151,8 +151,8 @@ export async function POST(req: NextRequest) {
 
   if (messageType === "init") {
     if (appointment.status === "PENDING") {
-      await sendPlainText(userId, greetingText(summary));
-      await sendChoiceRequest(userId, "Termin bestätigen?", [
+      const combined = `${greetingText(summary)}\n\nTermin bestätigen?`;
+      await sendChoiceRequest(userId, combined, [
         ChatChoice.CONFIRM,
         ChatChoice.CANCEL,
       ]);
@@ -161,7 +161,7 @@ export async function POST(req: NextRequest) {
           appointmentId: appointment.id,
           direction: "OUT",
           type: "choiceRequest",
-          body: `${ChatChoice.CONFIRM} | ${ChatChoice.CANCEL}`,
+          body: combined,
         },
       });
     } else if (appointment.status === "CONFIRMED") {
