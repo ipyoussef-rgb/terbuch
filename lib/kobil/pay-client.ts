@@ -209,15 +209,48 @@ export async function createTransaction(
 export type StatusResult = {
   raw: unknown;
   /** Best-effort normalized status — see normalize() below */
-  normalized:
-    | "PENDING"
-    | "INITIATED"
-    | "SUCCESS"
-    | "FAILED"
-    | "CANCELLED"
-    | "UNKNOWN";
+  normalized: PaymentStatus;
   rawStatus: string | undefined;
 };
+
+/**
+ * Normalised payment status. Maps the KOBIL Pay status values
+ * (https://documentation.cloud.kobil.com/.../kobil-pay/) plus our own
+ * synthetic states.
+ *
+ *   KOBIL Pay → ours
+ *   ----------------
+ *   new                     → INITIATED
+ *   processing              → PENDING
+ *   processing_3d_secure    → PENDING
+ *   processing_digital      → PENDING
+ *   notification            → PENDING
+ *   inquiring status        → PENDING (transient ack from /status)
+ *   finished                → SUCCESS
+ *   cancelled               → CANCELLED
+ *   closed                  → CANCELLED
+ *   timeout                 → TIMEOUT
+ *   error                   → FAILED
+ *   void                    → REFUNDED
+ *   refund                  → REFUNDED
+ */
+export type PaymentStatus =
+  | "INITIATED"
+  | "PENDING"
+  | "SUCCESS"
+  | "FAILED"
+  | "CANCELLED"
+  | "TIMEOUT"
+  | "REFUNDED"
+  | "UNKNOWN";
+
+export const FINAL_PAYMENT_STATUSES: ReadonlySet<PaymentStatus> = new Set([
+  "SUCCESS",
+  "FAILED",
+  "CANCELLED",
+  "TIMEOUT",
+  "REFUNDED",
+]);
 
 export async function getTransactionStatus(
   transactionId: string,
@@ -237,12 +270,21 @@ export async function getTransactionStatus(
   return { raw, normalized: normalize(rawStatus), rawStatus };
 }
 
-function normalize(s: string | undefined): StatusResult["normalized"] {
+/**
+ * Normalise a raw KOBIL Pay status string. Order matters:
+ * void/refund are checked BEFORE generic patterns since "refund" loses
+ * to nothing else, and "void" should not be confused with cancellation.
+ */
+export function normalizePaymentStatus(s: string | undefined): PaymentStatus {
   if (!s) return "UNKNOWN";
-  const u = s.toUpperCase();
-  // Pay callback sends `status: "finished"` and `message: "Payment complete."`
-  // for the success case — both must map to SUCCESS.
+  const u = s.toUpperCase().trim();
+
+  // Refunds come AFTER a successful payment; treat as their own state.
+  if (u === "VOID" || u === "REFUND" || u.includes("REFUND")) return "REFUNDED";
+
+  // Final success
   if (
+    u === "FINISHED" ||
     u.includes("SUCCESS") ||
     u.includes("COMPLETE") ||
     u.includes("FINISH") ||
@@ -250,19 +292,50 @@ function normalize(s: string | undefined): StatusResult["normalized"] {
     u.includes("DONE")
   )
     return "SUCCESS";
-  if (u.includes("FAIL") || u.includes("ERROR") || u.includes("REJECT") || u.includes("DECLIN"))
-    return "FAILED";
-  if (u.includes("CANCEL") || u.includes("VOID") || u.includes("ABORT")) return "CANCELLED";
-  if (u.includes("INIT")) return "INITIATED";
+
+  // Final failure
   if (
+    u === "ERROR" ||
+    u.includes("FAIL") ||
+    u.includes("REJECT") ||
+    u.includes("DECLIN")
+  )
+    return "FAILED";
+
+  // Final cancellation (cancelled / closed per docs)
+  if (
+    u === "CANCELLED" ||
+    u === "CANCELED" ||
+    u === "CLOSED" ||
+    u.includes("CANCEL") ||
+    u.includes("ABORT")
+  )
+    return "CANCELLED";
+
+  // Timeout
+  if (u.includes("TIMEOUT") || u.includes("EXPIRE")) return "TIMEOUT";
+
+  // Newly created — admin requested, payment not yet started by user.
+  if (u === "NEW" || u.includes("INIT") || u.includes("CREATED")) return "INITIATED";
+
+  // Transient processing states + the /status ack response
+  if (
+    u === "NOTIFICATION" ||
+    u.includes("PROCESSING") ||
+    u.includes("PROCESS") ||
     u.includes("INQUIR") ||
     u.includes("PEND") ||
-    u.includes("PROCESS") ||
-    u.includes("WAIT")
+    u.includes("WAIT") ||
+    u.includes("3D_SECURE") ||
+    u.includes("3D-SECURE")
   )
     return "PENDING";
+
   return "UNKNOWN";
 }
+
+// Internal alias kept for the rest of this module.
+const normalize = normalizePaymentStatus;
 
 function formatAmount(cents: number, currency: string): string {
   const major = (cents / 100).toFixed(2);

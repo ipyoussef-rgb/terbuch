@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { db } from "@/lib/db";
-import { getTransactionStatus } from "@/lib/kobil/pay-client";
+import {
+  getTransactionStatus,
+  normalizePaymentStatus,
+} from "@/lib/kobil/pay-client";
 import { appUrl } from "@/lib/app-url";
 
 export const maxDuration = 60;
@@ -61,7 +64,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Trust the callback body if it has a usable status; otherwise re-query.
-    const fromBody = bodyStatus ? normalize(bodyStatus) : "UNKNOWN";
+    const fromBody = bodyStatus ? normalizePaymentStatus(bodyStatus) : "UNKNOWN";
     if (fromBody !== "UNKNOWN") {
       await db.appointment.update({
         where: { id: a.id },
@@ -106,43 +109,3 @@ export async function GET(req: NextRequest) {
   return POST(req);
 }
 
-function normalize(
-  s: string,
-):
-  | "PENDING"
-  | "INITIATED"
-  | "SUCCESS"
-  | "FAILED"
-  | "CANCELLED"
-  | "TIMEOUT"
-  | "UNKNOWN" {
-  const u = s.toUpperCase();
-  // Pay sends "finished" / "Payment complete." for the success case.
-  if (
-    u.includes("SUCCESS") ||
-    u.includes("COMPLETE") ||
-    u.includes("FINISH") ||
-    u.includes("PAID") ||
-    u.includes("DONE")
-  )
-    return "SUCCESS";
-  if (
-    u.includes("FAIL") ||
-    u.includes("ERROR") ||
-    u.includes("REJECT") ||
-    u.includes("DECLIN")
-  )
-    return "FAILED";
-  if (u.includes("CANCEL") || u.includes("VOID") || u.includes("ABORT"))
-    return "CANCELLED";
-  if (u.includes("TIMEOUT") || u.includes("EXPIRE")) return "TIMEOUT";
-  if (u.includes("INIT")) return "INITIATED";
-  if (
-    u.includes("INQUIR") ||
-    u.includes("PEND") ||
-    u.includes("PROCESS") ||
-    u.includes("WAIT")
-  )
-    return "PENDING";
-  return "UNKNOWN";
-}

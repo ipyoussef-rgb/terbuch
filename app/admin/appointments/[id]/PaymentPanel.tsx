@@ -3,6 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PAY_DEADLINE_MS } from "@/lib/kobil/payment-config";
+import {
+  PAYMENT_STATUS_LABELS,
+  germanRawStatus,
+} from "@/lib/kobil/payment-labels";
+import type { PaymentStatus } from "@/lib/kobil/pay-client";
 
 type Initial = {
   amountCents: number | null;
@@ -16,7 +21,13 @@ type Initial = {
   lastCheckedAt: string | null;
 };
 
-const FINAL_STATUSES = new Set(["SUCCESS", "FAILED", "CANCELLED", "TIMEOUT"]);
+const FINAL_STATUSES = new Set([
+  "SUCCESS",
+  "FAILED",
+  "CANCELLED",
+  "TIMEOUT",
+  "REFUNDED",
+]);
 
 export default function PaymentPanel({
   appointmentId,
@@ -171,7 +182,7 @@ export default function PaymentPanel({
             <PaymentStatusBadge status={initial.status} />
             {initial.rawStatus ? (
               <span className="ml-2 text-[10px] text-[var(--color-kobil-navy)]/50">
-                ({initial.rawStatus})
+                ({germanRawStatus(initial.rawStatus)})
               </span>
             ) : null}
             {initial.lastCheckedAt ? (
@@ -187,7 +198,8 @@ export default function PaymentPanel({
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
         {!initial.choice ||
         initial.status === "FAILED" ||
-        initial.status === "TIMEOUT" ? (
+        initial.status === "TIMEOUT" ||
+        initial.status === "CANCELLED" ? (
           <>
             <Input label="Betrag" suffix={currency}>
               <input
@@ -289,17 +301,16 @@ function Input({
 }
 
 function PaymentStatusBadge({ status }: { status: string | null }) {
-  const cfg = !status
-    ? { cls: "bg-neutral-100 text-neutral-700 border-neutral-200", label: "—" }
-    : status === "SUCCESS"
-      ? { cls: "bg-emerald-50 text-emerald-700 border-emerald-200", label: "Bezahlt" }
-      : status === "FAILED"
-        ? { cls: "bg-rose-50 text-rose-700 border-rose-200", label: "Fehlgeschlagen" }
-        : status === "TIMEOUT"
-          ? { cls: "bg-rose-50 text-rose-700 border-rose-200", label: "Abgelaufen" }
-          : status === "CANCELLED"
-            ? { cls: "bg-neutral-100 text-neutral-700 border-neutral-200", label: "Abgebrochen" }
-            : { cls: "bg-amber-50 text-amber-700 border-amber-200", label: status };
+  if (!status) {
+    return (
+      <span className="text-xs rounded-full px-2.5 py-0.5 border font-medium bg-neutral-100 text-neutral-700 border-neutral-200">
+        —
+      </span>
+    );
+  }
+  const cfg =
+    PAYMENT_STATUS_LABELS[status as PaymentStatus] ??
+    PAYMENT_STATUS_LABELS.UNKNOWN;
   return (
     <span className={`text-xs rounded-full px-2.5 py-0.5 border font-medium ${cfg.cls}`}>
       {cfg.label}
