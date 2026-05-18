@@ -6,4 +6,8 @@ export default defineConfig({
   migrations: {
     path: "prisma/migrations",
   },
+  datasource: {
+    url: process.env.TERMIN_DATABASE_URL ?? "",
+    directUrl: process.env.TERMIN_DATABASE_URL_UNPOOLED,
+  },
 });
