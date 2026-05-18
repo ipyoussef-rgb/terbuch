@@ -6,7 +6,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider  = "postgresql"
+  url       = env("TERMIN_DATABASE_URL")
+  directUrl = env("TERMIN_DATABASE_URL_UNPOOLED")
 }
 
 model Service {
